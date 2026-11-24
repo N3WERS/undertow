@@ -4435,12 +4435,24 @@ img {
   isolation: isolate;
   overflow: hidden;
   gap: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.045);
   background: linear-gradient(
     90deg,
-    rgba(7, 11, 16, 0.44) 0%,
-    rgba(7, 11, 16, 0.24) 58%,
-    rgba(7, 11, 16, 0) 100%
+    rgba(7, 11, 16, 0.36) 0%,
+    rgba(7, 11, 16, 0.19) 62%,
+    rgba(7, 11, 16, 0.13) 100%
   );
+}
+/* мягкая складка у края: граница читается, но нет смены цвета панели */
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.2));
 }
 .sidebar-glow {
   position: absolute;
