@@ -143,24 +143,25 @@ export default function FlowView({
       <section className={`flow-hero fade-up${alive ? ' live' : ''}`} ref={heroRef}>
         <div className="flow-glow" aria-hidden="true" />
         <div className="flow-hero-text">
-          <span className="flow-kicker">бесконечный поток</span>
+          <span className="flow-kicker">поток без конца</span>
           <h1 className="flow-title">Течение</h1>
           <p className="flow-lead">
-            Любимые артисты и похожие на них — по кругу, без повторов из библиотеки. Поток не
-            заканчивается: когда треки кончаются, подключаются соседи соседей.
+            Любимые артисты, их соседи и соседи соседей — по кругу. Течение не заканчивается:
+            запас пополняется сам, пока играет музыка, а треки из вашей библиотеки туда почти
+            не попадают.
           </p>
           <div className="flow-actions">
             <button className="play-btn" onClick={onStart} disabled={loading}>
               <IconPlay width={15} height={15} />
-              {loading ? 'собираю течение…' : active ? 'Пересобрать' : 'Запустить течение'}
+              {loading ? 'собираю…' : active ? 'Собрать заново' : 'Запустить'}
             </button>
             {active ? (
               <span className="flow-live">
                 <span className="flow-dot" />
-                {playing ? 'в эфире' : 'на паузе'}
+                {playing ? 'звучит' : 'на паузе'}
               </span>
             ) : null}
-            <span className="flow-hint">30 треков сразу, дальше само</span>
+            <span className="flow-hint">30 треков сразу — дальше само</span>
           </div>
         </div>
         <div className="flow-orb" aria-hidden="true">
@@ -176,7 +177,7 @@ export default function FlowView({
           <div className="flow-now">
             {current.coverUrl ? <img className="flow-now-cover" src={current.coverUrl} alt="" /> : <div className="flow-now-cover" />}
             <div className="flow-now-meta">
-              <span className="flow-now-label">сейчас в течении</span>
+              <span className="flow-now-label">сейчас играет</span>
               <div className="flow-now-title">{current.title}</div>
               <div className="flow-now-artist">
                 {current.artist}
@@ -191,7 +192,7 @@ export default function FlowView({
           <div className="flow-next">
             <div className="flow-next-head">
               <span>дальше</span>
-              <span className="flow-next-count">{Math.max(0, queue.length - index - 1)} в потоке</span>
+              <span className="flow-next-count">ещё {Math.max(0, queue.length - index - 1)}</span>
             </div>
             {upcoming.map((t, i) => (
               <button
@@ -213,7 +214,7 @@ export default function FlowView({
               </button>
             ))}
             {!upcoming.length ? (
-              <div className="flow-next-empty">Подтягиваю следующие треки…</div>
+              <div className="flow-next-empty">Подтягиваю ещё…</div>
             ) : null}
           </div>
         </section>
@@ -223,10 +224,10 @@ export default function FlowView({
             <IconWave width={26} height={26} />
           </div>
           <div>
-            <b>Течение ещё не запущено</b>
+            <b>Течение пока стоит</b>
             <p>
-              Поток собирается из ваших лайков и истории: берутся любимые артисты, их «похожие» и
-              песни, которых у вас ещё нет.
+              Включите — и пойдёт поток из артистов, которых вы слушаете, и похожих на них.
+              Треки, которые уже есть в библиотеке, туда почти не попадают.
             </p>
           </div>
         </section>
@@ -236,8 +237,8 @@ export default function FlowView({
         <div className="section-head">
           <div className="section-title">
             <div>
-              <h2>Откуда течёт</h2>
-              <div className="section-sub">клик — радио этого артиста</div>
+              <h2>Из чего течёт</h2>
+              <div className="section-sub">нажмите на артиста — включится его радио</div>
             </div>
           </div>
           <div className="section-tools">
@@ -271,15 +272,15 @@ export default function FlowView({
           </div>
         ) : (
           <div className="empty">
-            <b>Пока пусто</b>
-            Лайкните несколько треков — и течение будет из чего собирать.
+            <b>Пока не из чего течь</b>
+            Поставьте лайки нескольким трекам — и течение соберётся.
           </div>
         )}
       </section>
 
       <p className="flow-note">
-        Свои треки из библиотеки тоже иногда попадают в поток — примерно один на двадцать, чтобы
-        знакомое не вытесняло новое.
+        Свои треки тоже иногда всплывают — примерно один на двадцать, чтобы знакомое не
+        вытесняло новое.
       </p>
     </div>
   )
