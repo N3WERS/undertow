@@ -144,6 +144,7 @@ img {
 /* -------------------------------- каркас -------------------------------- */
 
 .app {
+  isolation: isolate;
   display: grid;
   grid-template-rows: var(--titlebar) 1fr var(--player);
   height: 100%;
@@ -4766,4 +4767,35 @@ img {
 }
 .lyrics-line.on {
   box-shadow: inset 2px 0 var(--accent);
+}
+
+
+/* --------------------- свечение, следующее за курсором -------------------- */
+.cursor-glow {
+  position: fixed;
+  top: -410px;
+  left: -410px;
+  width: 820px;
+  height: 820px;
+  border-radius: 50%;
+  pointer-events: none;
+  /* поверх фонов и карточек, но под панелями плеера и текста */
+  z-index: 5;
+  opacity: 0;
+  background: radial-gradient(
+    circle at center,
+    rgba(55, 214, 207, 0.3) 0%,
+    rgba(55, 214, 207, 0.13) 27%,
+    rgba(111, 140, 255, 0.09) 48%,
+    transparent 72%
+  );
+  filter: blur(36px);
+  mix-blend-mode: screen;
+  transition: opacity 0.45s var(--ease);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cursor-glow {
+    display: none;
+  }
 }
