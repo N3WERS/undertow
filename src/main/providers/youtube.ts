@@ -229,7 +229,9 @@ export async function resolveStream(trackId: string): Promise<ResolvedStream> {
       url,
       mime: ext === 'webm' ? 'audio/webm' : ext === 'mp4' || ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg',
       bitrateKbps: abr ? Math.round(abr) : undefined,
-      ttlMs: CACHE_TTL
+      ttlMs: CACHE_TTL,
+      source: 'youtube',
+      videoId: videoIdOf(trackId)
     }
     streamCache.set(trackId, { stream, expires: Date.now() + CACHE_TTL })
     if (streamCache.size > 120) {

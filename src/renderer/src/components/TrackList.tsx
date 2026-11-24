@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { Track } from '../types'
-import { IconDisc, IconHeart, IconListPlus, IconNote, IconPlay, IconPlus, IconWave, IconX } from './Icons'
+import { IconCheck, IconDisc, IconDownload, IconHeart, IconListPlus, IconNote, IconPlay, IconPlus, IconWave, IconX } from './Icons'
+import { removeOffline, saveTrack, useOffline } from '../offline'
 import ArtistLine from './ArtistLine'
 
 interface Props {
@@ -68,6 +69,7 @@ export default function TrackList({
 }: Props) {
   const list = limit ? tracks.slice(0, limit) : tracks
   const [dragging, setDragging] = useState<number | null>(null)
+  const offline = useOffline()
   return (
     <div className="tracks">
       {list.map((t, i) => {
@@ -213,6 +215,34 @@ export default function TrackList({
                   // пустой слот: без него у треков без альбома уезжают колонки
                   <span className="row-action placeholder" aria-hidden="true" />
                 )
+              ) : null}
+              {t.playable ? (
+                <button
+                  className={`row-action save-track${offline.ids.has(t.id) ? ' on' : ''}${
+                    offline.progress[t.id] ? ' saving' : ''
+                  }`}
+                  title={
+                    offline.progress[t.id]
+                      ? `Сохраняю… ${offline.progress[t.id].percent ?? 0}%`
+                      : offline.ids.has(t.id)
+                        ? 'Удалить локальную копию'
+                        : 'Сохранить локально'
+                  }
+                  aria-pressed={offline.ids.has(t.id)}
+                  style={
+                    offline.progress[t.id]?.percent != null
+                      ? ({ '--save-progress': `${offline.progress[t.id].percent}%` } as CSSProperties)
+                      : undefined
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (offline.progress[t.id]) return
+                    if (offline.ids.has(t.id)) void removeOffline(t.id).catch(() => undefined)
+                    else void saveTrack(t).catch(() => undefined)
+                  }}
+                >
+                  {offline.ids.has(t.id) ? <IconCheck width={14} height={14} /> : <IconDownload width={14} height={14} />}
+                </button>
               ) : null}
               {onLike ? (
                 <button

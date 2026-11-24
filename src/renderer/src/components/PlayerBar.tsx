@@ -28,7 +28,7 @@ interface Props {
   duration: number
   volume: number
   quality: string | null
-  source: 'yandex' | 'youtube' | null
+  source: 'yandex' | 'youtube' | 'local' | null
   /** название играющей копии, если она отличается от трека в очереди */
   copyLabel: string | null
   versions: { loading: boolean; list: TrackVersion[] } | null
@@ -123,9 +123,15 @@ export default function PlayerBar(p: Props) {
                 {p.source && (
                   <span
                     className={`src-pill ${p.source}`}
-                    title={p.source === 'yandex' ? 'Играет с Яндекс.Музыки' : 'Играет с YouTube'}
+                    title={
+                      p.source === 'yandex'
+                        ? 'Играет с Яндекс.Музыки'
+                        : p.source === 'local'
+                          ? 'Играет локальная копия'
+                          : 'Играет с YouTube'
+                    }
                   >
-                    {p.source === 'yandex' ? 'YM' : 'YT'}
+                    {p.source === 'yandex' ? 'YM' : p.source === 'local' ? 'LOCAL' : 'YT'}
                   </span>
                 )}
                 {p.quality && (

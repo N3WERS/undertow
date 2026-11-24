@@ -1,7 +1,8 @@
 import { app, BrowserWindow, screen, shell } from 'electron'
 import { join } from 'node:path'
-import { startAudioProxy } from './audioProxy'
+import { startAudioProxy, setLocalRoot } from './audioProxy'
 import { registerIpc } from './ipc'
+import * as offline from './offline'
 import * as providers from './providers'
 
 const BG = '#070a0e'
@@ -87,6 +88,7 @@ app.whenReady().then(async () => {
   app.setAppUserModelId('co.undertow.app')
   // аудио-прокси нужен до первого resolve, иначе плеер получит прямые URL без CORS
   await startAudioProxy()
+  setLocalRoot(offline.localRoot())
   registerIpc()
   createWindow()
 

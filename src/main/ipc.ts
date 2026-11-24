@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { proxify } from './audioProxy'
@@ -7,6 +7,7 @@ import type { Track } from './providers/types'
 import * as queueStore from './queueStore'
 import * as versions from './versions'
 import * as releases from './releases'
+import * as offline from './offline'
 
 export function registerIpc(): void {
   ipcMain.handle('home', async () => providers.home())
@@ -16,8 +17,31 @@ export function registerIpc(): void {
   ipcMain.handle('search:all', async (_e, query: string) => providers.searchAll(String(query ?? '')))
   ipcMain.handle('resolve', async (_e, id: string, fresh: boolean, meta?: Track) => {
     const stream = await providers.resolveStream(String(id), Boolean(fresh), meta)
+    // локальная копия уже отдаётся прокси (endpoint /f) — второй раз не оборачиваем
+    if (stream.source === 'local') return stream
     // через локальный прокси: он добавляет CORS, без которого Web Audio молчит
     return { ...stream, url: proxify(stream.url, stream.mime) }
+  })
+
+  // локальные копии: скачивание идёт в main, чтобы не зависеть от сети рендерера
+  ipcMain.handle('offline:list', async () => offline.list())
+  ipcMain.handle('offline:save', async (e, track: Track) => {
+    const existing = await offline.entryFor(track.id)
+    if (existing) return existing
+    const stream = await providers.resolveStream(track.id, false, track)
+    if (stream.source === 'local') {
+      const local = await offline.entryFor(track.id)
+      if (local) return local
+    }
+    const win = BrowserWindow.fromWebContents(e.sender)
+    return offline.save(track, stream, (progress) => {
+      if (win && !win.isDestroyed()) win.webContents.send('offline:progress', progress)
+    })
+  })
+  ipcMain.handle('offline:remove', async (_e, id: string) => offline.remove(String(id)))
+  ipcMain.handle('offline:clear', async () => offline.clearAll())
+  ipcMain.handle('offline:reveal', async () => {
+    await shell.openPath(offline.localRoot())
   })
 
   ipcMain.handle('queue:get', async () => queueStore.load())

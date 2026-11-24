@@ -1,7 +1,7 @@
-import { IconHome, IconLibrary, IconList, IconSearch, IconSettings, IconSpark, IconWave } from './Icons'
+import { IconDownload, IconHome, IconLibrary, IconList, IconSearch, IconSettings, IconSpark, IconWave } from './Icons'
 import type { ProviderState } from '../types'
 
-export type View = 'home' | 'releases' | 'flow' | 'search' | 'library' | 'playlists' | 'settings'
+export type View = 'home' | 'releases' | 'flow' | 'search' | 'library' | 'saved' | 'playlists' | 'settings'
 
 interface Props {
   view: View
@@ -21,6 +21,7 @@ export default function Sidebar({ view, onChange, state }: Props) {
   ]
   const collection: Item[] = [
     { id: 'library', label: 'Библиотека', icon: IconLibrary },
+    { id: 'saved', label: 'Сохранённые', icon: IconDownload },
     { id: 'playlists', label: 'Плейлисты', icon: IconList }
   ]
   const settings: Item = { id: 'settings', label: 'Настройки', icon: IconSettings }

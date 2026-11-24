@@ -5,6 +5,7 @@ import FlowView from './components/FlowView'
 import SearchViewBase from './components/SearchView'
 import Settings from './components/Settings'
 import LibraryView from './components/LibraryView'
+import SavedView from './components/SavedView'
 import QueuePanel from './components/QueuePanel'
 import BrowseView from './components/BrowseView'
 import ReleasesView from './components/ReleasesView'
@@ -14,6 +15,7 @@ import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import { AudioEngine, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
+import { onNotify } from './notify'
 import type { BrowsePage, LibrarySnapshot, ProviderState, ReleaseItem, Section, Track, TrackVersion } from './types'
 import { APP_VERSION } from './version'
 
@@ -51,7 +53,7 @@ export default function App() {
   const [snap, setSnap] = useState<Snapshot>(EMPTY_SNAP)
   const [track, setTrack] = useState<Track | null>(null)
   const [quality, setQuality] = useState<string | null>(null)
-  const [source, setSource] = useState<'yandex' | 'youtube' | null>(null)
+  const [source, setSource] = useState<'yandex' | 'youtube' | 'local' | null>(null)
   const [versions, setVersions] = useState<{ loading: boolean; list: TrackVersion[] } | null>(null)
   /** исходный трек, от которого ищем версии: переживает переключение на версию */
   const versionBaseRef = useRef<Track | null>(null)
@@ -104,6 +106,8 @@ export default function App() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5200)
   }, [])
   toastRef.current = toast
+  // события из любых модулей (например, сохранение трека в TrackList)
+  useEffect(() => onNotify((text, kind) => toast(text, kind)), [toast])
 
   /* ---------------------------- лента и состояние -------------------------- */
 
@@ -899,6 +903,23 @@ export default function App() {
               onPlay={playTrack}
               onToggle={toggle}
               likedIds={likedIds}
+              onLike={toggleLike}
+              onHover={hoverPrewarm}
+              onAddToQueue={addToQueue}
+              onOpenArtist={openArtist}
+              onOpenAlbum={openAlbum}
+              onAddToPlaylist={setPickerTrack}
+              onSimilar={(t) => void startSimilar(t)}
+            />
+          )}
+
+          {!browse && view === 'saved' && (
+            <SavedView
+              currentId={currentId}
+              playing={snap.playing}
+              likedIds={likedIds}
+              onPlay={playTrack}
+              onToggle={toggle}
               onLike={toggleLike}
               onHover={hoverPrewarm}
               onAddToQueue={addToQueue}

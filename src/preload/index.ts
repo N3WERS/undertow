@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   home: () => ipcRenderer.invoke('home'),
+  offlineList: () => ipcRenderer.invoke('offline:list'),
+  offlineSave: (track: unknown) => ipcRenderer.invoke('offline:save', track),
+  offlineRemove: (id: string) => ipcRenderer.invoke('offline:remove', id),
+  offlineClear: () => ipcRenderer.invoke('offline:clear'),
+  offlineReveal: () => ipcRenderer.invoke('offline:reveal'),
   queueGet: () => ipcRenderer.invoke('queue:get'),
   queueSave: (state: unknown) => ipcRenderer.invoke('queue:save', state),
   queueClear: () => ipcRenderer.invoke('queue:clear'),
@@ -55,6 +60,12 @@ const api = {
   setYandexToken: (token: string) => ipcRenderer.invoke('yandex:set', token),
   clearYandexToken: () => ipcRenderer.invoke('yandex:clear'),
   refreshYandex: () => ipcRenderer.invoke('yandex:refresh'),
+  /** прогресс скачивания локальной копии */
+  onOfflineProgress: (cb: (progress: unknown) => void) => {
+    const handler = (_e: unknown, progress: unknown) => cb(progress)
+    ipcRenderer.on('offline:progress', handler)
+    return () => ipcRenderer.removeListener('offline:progress', handler)
+  },
   /** main дозаполнил длительности старых треков — пора перечитать списки */
   onDurations: (cb: (count: number) => void) => {
     const handler = (_e: unknown, count: number) => cb(count)

@@ -361,7 +361,9 @@ async function fastTry(track: Track): Promise<{ mapping: Mapping; stream: Resolv
         mime,
         bitrateKbps: one.abr ? Math.round(one.abr) : undefined,
         ttlMs: 45_000,
-        fallback: true
+        fallback: true,
+        source: 'youtube',
+        videoId: one.videoId
       }
     }
   } catch {

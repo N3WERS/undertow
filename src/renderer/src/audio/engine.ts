@@ -41,7 +41,7 @@ export interface EngineHandlers {
     main: string | null
   ): void
   /** откуда реально играет трек — для значка в плеере */
-  onSource(source: 'yandex' | 'youtube' | null, fallback: boolean): void
+  onSource(source: 'yandex' | 'youtube' | 'local' | null, fallback: boolean): void
 }
 
 export interface EngineOptions {

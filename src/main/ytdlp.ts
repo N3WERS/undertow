@@ -179,3 +179,91 @@ export async function ytSearchResolve(query: string): Promise<YtdlpSearchResolve
     url
   }
 }
+
+/**
+ * Скачивает лучший аудиопоток прямо в файл.
+ *
+ * Зачем не качать по ссылке из ytResolve: googlevideo режет одиночное
+ * соединение до ~50 КБ/с, поэтому обычный fetch для сохранения слишком
+ * медленный. yt-dlp с `--http-chunk-size` тянет кусками и укладывается
+ * в несколько секунд.
+ */
+export async function ytDownload(
+  videoId: string,
+  dir: string,
+  baseName: string,
+  onPercent?: (percent: number) => void
+): Promise<{ file: string; bytes: number }> {
+  const { readdir, stat, rm } = await import('node:fs/promises')
+  const path = await import('node:path')
+  const cmd = await findPython()
+  const template = path.join(dir, `${baseName}.%(ext)s`)
+  const args = [
+    '-m',
+    'yt_dlp',
+    '--no-warnings',
+    '--newline',
+    '--no-part',
+    '--no-playlist',
+    '--force-overwrites',
+    '--http-chunk-size',
+    '1M',
+    '-f',
+    'bestaudio[acodec=opus]/bestaudio/best',
+    '-o',
+    template,
+    `https://music.youtube.com/watch?v=${videoId}`
+  ]
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(cmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
+    let err = ''
+    let last = -1
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error('yt-dlp: скачивание заняло слишком много времени'))
+    }, 300_000)
+
+    child.stdout.on('data', (d) => {
+      const text = d.toString()
+      const m = /\[download\]\s+([\d.]+)%/.exec(text)
+      if (m) {
+        const pct = Math.round(Number(m[1]))
+        if (pct !== last) {
+          last = pct
+          onPercent?.(pct)
+        }
+      }
+    })
+    child.stderr.on('data', (d) => {
+      err += d.toString()
+    })
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      reject(e)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve()
+      else reject(new Error(`yt-dlp: ${err.trim().split('\n').slice(-2).join(' ') || `exit ${code}`}`))
+    })
+  })
+
+  const files = (await readdir(dir)).filter((f) => f.startsWith(`${baseName}.`) && !f.endsWith('.part'))
+  if (!files.length) throw new Error('yt-dlp не оставил файл')
+  let best = ''
+  let size = 0
+  for (const f of files) {
+    const full = path.join(dir, f)
+    const s = await stat(full)
+    if (s.size > size) {
+      best = full
+      size = s.size
+    }
+  }
+  if (!best || size < 20_000) {
+    await Promise.all(files.map((f) => rm(path.join(dir, f), { force: true }).catch(() => undefined)))
+    throw new Error('yt-dlp скачал пустой файл')
+  }
+  return { file: best, bytes: size }
+}

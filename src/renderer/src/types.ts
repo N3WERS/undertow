@@ -47,7 +47,7 @@ export interface ResolvedStream {
   bitrateKbps?: number
   ttlMs: number
   /** откуда реально пришёл звук (может отличаться от provider трека) */
-  source?: 'yandex' | 'youtube'
+  source?: 'yandex' | 'youtube' | 'local'
   fallback?: boolean
   fallbackTitle?: string
   fallbackMatched?: { title: string; artist: string }
@@ -57,6 +57,8 @@ export interface ResolvedStream {
   variant?: boolean
   /** id видео выбранного варианта */
   variantVideoId?: string
+  /** id YouTube-видео, если звук пришёл с YouTube */
+  videoId?: string
 }
 
 export interface ProviderState {
@@ -83,6 +85,33 @@ export interface LibrarySnapshot {
 export interface LikeResult {
   liked: boolean
   syncError: string | null
+}
+
+export interface OfflineEntry {
+  track: Track
+  /** имя файла внутри папки offline */
+  file: string
+  mime: string
+  bytes: number
+  bitrateKbps?: number
+  savedAt: number
+  source: 'yandex' | 'youtube'
+}
+
+export interface OfflineSnapshot {
+  items: OfflineEntry[]
+  count: number
+  bytes: number
+}
+
+export interface OfflineProgress {
+  id: string
+  received: number
+  total: number
+  /** 0..100 или null, если сервер не отдал размер */
+  percent: number | null
+  status: 'downloading' | 'done' | 'error'
+  error?: string
 }
 
 export interface FallbackCandidate {
@@ -183,6 +212,12 @@ export interface UndertowApi {
   clearHiddenSections(): Promise<string[]>
   artistPage(ref: { id?: string; name?: string }): Promise<BrowsePage>
   albumPage(ref: { id?: string; title?: string; artist?: string; trackTitle?: string }): Promise<BrowsePage>
+  offlineList(): Promise<OfflineSnapshot>
+  offlineSave(track: Track): Promise<OfflineEntry>
+  offlineRemove(id: string): Promise<boolean>
+  offlineClear(): Promise<number>
+  offlineReveal(): Promise<void>
+  onOfflineProgress(cb: (progress: OfflineProgress) => void): () => void
   queueGet(): Promise<{ tracks: Track[]; index: number; shuffled: boolean; time: number; savedAt: number } | null>
   queueSave(state: { tracks: Track[]; index: number; shuffled: boolean }): Promise<void>
   queueClear(): Promise<void>

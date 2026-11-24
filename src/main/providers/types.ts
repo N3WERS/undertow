@@ -67,9 +67,11 @@ export interface ResolvedStream {
   /** вариант выбран вручную: играет как самостоятельный трек (его можно лайкнуть) */
   variant?: boolean
   /** откуда реально пришёл звук (может отличаться от provider трека) */
-  source?: 'yandex' | 'youtube'
+  source?: 'yandex' | 'youtube' | 'local'
   /** id видео выбранного варианта */
   variantVideoId?: string
+  /** id YouTube-видео, если звук пришёл с YouTube (для локального сохранения) */
+  videoId?: string
   /** найдена не точная копия, а близкий вариант */
   fallbackApprox?: boolean
 }

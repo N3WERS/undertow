@@ -7,6 +7,8 @@
  *  - токен есть и Плюс активен     → Яндекс основной, YouTube дополняет.
  */
 import * as fallback from '../fallback'
+import * as offline from '../offline'
+import { proxifyLocal } from '../audioProxy'
 import * as library from '../library'
 import type { LibrarySnapshot } from '../library'
 import { getYandexToken, setYandexToken } from '../store'
@@ -724,6 +726,12 @@ export async function debugFileInfo(trackId: string): Promise<unknown> {
 }
 
 export async function resolveStream(trackId: string, fresh = false, meta?: Track): Promise<ResolvedStream> {
+  // сохранённая копия главнее любого источника: играет без сети и без Плюса
+  const local = await offline.localStream(trackId)
+  if (local) {
+    const { filePath, ...rest } = local
+    return { ...rest, url: proxifyLocal(filePath, local.mime) }
+  }
   if (trackId.startsWith('ym:')) await ensureYandexChecked()
   if (trackId.startsWith('ym:')) {
     // выбранный вручную вариант важнее источника: даже при живом Яндексе
@@ -746,7 +754,8 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
     if (canYandex) {
       if (fresh) yandex.dropStreamCache(trackId)
       try {
-        return await yandex.resolveStream(token as string, trackId)
+        const st = await yandex.resolveStream(token as string, trackId)
+        return { ...st, source: 'yandex' }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
         // Превью вместо трека = Плюс перестал действовать: гасим Яндекс до перепроверки

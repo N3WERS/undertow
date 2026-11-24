@@ -4993,3 +4993,68 @@ img {
     animation: none;
   }
 }
+
+/* --------------------- локальные копии треков (сохранённые) ---------------- */
+
+/* кнопка сохранения в строке: обычная стрелка, галочка у готовой копии */
+.row-action.save-track {
+  position: relative;
+}
+.row-action.save-track.on {
+  opacity: 1;
+  color: var(--accent);
+  background: rgba(55, 214, 207, 0.1);
+}
+.row-action.save-track.saving {
+  opacity: 1;
+  color: var(--accent);
+}
+.row-action.save-track.saving::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) var(--save-progress, 0%), rgba(255, 255, 255, 0.09) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  pointer-events: none;
+}
+.row-action.save-track.saving svg {
+  animation: savePulse 1.25s ease-in-out infinite;
+}
+@keyframes savePulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* значок локального источника в плеере */
+.src-pill.local {
+  color: var(--accent);
+  border-color: rgba(55, 214, 207, 0.32);
+  background: rgba(55, 214, 207, 0.09);
+}
+
+.saved-note {
+  margin-bottom: 4px;
+}
+.notice.error {
+  color: var(--danger);
+  background: rgba(255, 107, 107, 0.09);
+  border-color: rgba(255, 107, 107, 0.24);
+}
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.link-btn.danger {
+  color: #ff9a9a;
+}
+.link-btn.danger:hover {
+  color: #ffbcbc;
+}

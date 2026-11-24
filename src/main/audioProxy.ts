@@ -9,14 +9,18 @@
  * Бонус: здесь же позже появится расшифровка lossless (transport: encraw).
  */
 import { randomBytes } from 'node:crypto'
+import fs from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import path from 'node:path'
 
 const ALLOWED_HOSTS = ['.googlevideo.com', 'googlevideo.com', '.yandex.net', 'yandex.net', '.yandex.ru', 'yandex.ru']
 
 let server: Server | null = null
 let secret = ''
 let port = 0
+/** папка, из которой разрешено отдавать локальные файлы (сохранённые треки) */
+let localRoot = ''
 
 function hostAllowed(hostname: string): boolean {
   const h = hostname.toLowerCase()
@@ -30,6 +34,68 @@ function setCors(res: ServerResponse): void {
   res.setHeader('Access-Control-Expose-Headers', 'content-range, content-length, accept-ranges, content-type')
 }
 
+async function serveLocal(req: IncomingMessage, res: ServerResponse, parsed: URL): Promise<void> {
+  if (parsed.searchParams.get('s') !== secret) {
+    res.writeHead(403).end()
+    return
+  }
+  let file: string
+  try {
+    file = path.resolve(Buffer.from(parsed.searchParams.get('p') ?? '', 'base64url').toString('utf8'))
+  } catch {
+    res.writeHead(400).end()
+    return
+  }
+  const root = path.resolve(localRoot)
+  // никаких выходов из папки сохранённых треков
+  if (!localRoot || (file !== root && !file.startsWith(root + path.sep))) {
+    res.writeHead(403).end()
+    return
+  }
+
+  let stat: fs.Stats
+  try {
+    stat = await fs.promises.stat(file)
+  } catch {
+    res.writeHead(404).end()
+    return
+  }
+  if (!stat.isFile()) {
+    res.writeHead(404).end()
+    return
+  }
+
+  const ct = parsed.searchParams.get('ct') || 'application/octet-stream'
+  res.setHeader('Content-Type', ct)
+  res.setHeader('Accept-Ranges', 'bytes')
+  const range = req.headers.range
+  if (range) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim())
+    if (m) {
+      const start = m[1] ? Number(m[1]) : 0
+      const end = m[2] ? Math.min(Number(m[2]), stat.size - 1) : stat.size - 1
+      if (start <= end && start < stat.size) {
+        res.statusCode = 206
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`)
+        res.setHeader('Content-Length', end - start + 1)
+        if (req.method === 'HEAD') {
+          res.end()
+          return
+        }
+        fs.createReadStream(file, { start, end }).pipe(res)
+        return
+      }
+    }
+  }
+  res.setHeader('Content-Length', stat.size)
+  res.statusCode = 200
+  if (req.method === 'HEAD') {
+    res.end()
+    return
+  }
+  fs.createReadStream(file).pipe(res)
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
   setCors(res)
   if (req.method === 'OPTIONS') {
@@ -38,6 +104,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
 
   const parsed = new URL(req.url ?? '/', 'http://127.0.0.1')
+  if (parsed.pathname === '/f') {
+    await serveLocal(req, res, parsed)
+    return
+  }
   if (parsed.pathname !== '/a') {
     res.writeHead(404).end()
     return
@@ -129,6 +199,18 @@ export async function startAudioProxy(): Promise<number> {
 
   port = (server.address() as AddressInfo).port
   return port
+}
+
+export function setLocalRoot(dir: string): void {
+  localRoot = dir
+}
+
+/** Оборачивает путь к сохранённому файлу в локальный прокси. */
+export function proxifyLocal(filePath: string, mime?: string): string {
+  if (!port) return filePath
+  const encoded = Buffer.from(filePath, 'utf8').toString('base64url')
+  const ct = mime ? `&ct=${encodeURIComponent(mime)}` : ''
+  return `http://127.0.0.1:${port}/f?s=${secret}&p=${encoded}${ct}`
 }
 
 /** Оборачивает прямой URL в локальный прокси. */

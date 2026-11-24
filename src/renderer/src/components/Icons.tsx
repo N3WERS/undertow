@@ -198,3 +198,22 @@ export function IconRadio(P: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+export const IconDownload = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3.8v10.4M8 10.4l4 4 4-4" />
+    <path d="M4.5 16.5v2.1a1.6 1.6 0 0 0 1.6 1.6h11.8a1.6 1.6 0 0 0 1.6-1.6v-2.1" />
+  </svg>
+)
+
+export const IconCheck = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4.8 12.6 9.6 17.4 19.4 7" />
+  </svg>
+)
+
+export const IconFolder = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M3.5 7.2a1.7 1.7 0 0 1 1.7-1.7h4.1l2 2.2h6.5a1.7 1.7 0 0 1 1.7 1.7v8.9a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7z" />
+  </svg>
+)
