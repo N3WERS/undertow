@@ -5164,3 +5164,109 @@ img {
   border-color: rgba(255, 107, 107, 0.35);
   background: rgba(8, 12, 17, 0.9);
 }
+
+/* --------------------- действия трека в блоке «сейчас играет» ------------- */
+
+/* текст занимает всё свободное место, а лайк и сохранение прижаты к правому
+   краю инфо-блока: транспорт остаётся чистым, кнопки не толпятся у «назад» */
+.now-text {
+  flex: 1;
+}
+.now-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+.now-actions .tbtn {
+  width: 28px;
+  height: 28px;
+}
+.now-actions .tbtn svg {
+  width: 15px;
+  height: 15px;
+}
+.like-tbtn {
+  color: #7d8da2;
+}
+.like-tbtn.on {
+  color: #f2547d;
+}
+.like-tbtn:hover:not(:disabled) {
+  color: #f2547d;
+  background: rgba(242, 84, 125, 0.1);
+}
+.like-tbtn:disabled {
+  opacity: 0.34;
+}
+.save-tbtn {
+  position: relative;
+  color: #7d8da2;
+}
+.save-tbtn.on {
+  color: var(--accent);
+}
+.save-tbtn.saving svg {
+  animation: savePulse 1.25s ease-in-out infinite;
+}
+.save-percent {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  padding: 1px 3px;
+  border-radius: 5px;
+  background: rgba(6, 12, 17, 0.92);
+  color: var(--accent);
+  font-size: 7px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* --------------------- правый блок: инструменты и громкость --------------- */
+
+.player-right {
+  gap: 12px;
+  padding-right: 14px;
+}
+.vol-bar {
+  width: 122px;
+}
+.volume {
+  gap: 10px;
+}
+.volume .icon-btn svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* окно версий — там же, где очередь и текст: справа над плеером */
+.versions-menu {
+  position: fixed;
+  top: auto;
+  right: 18px;
+  bottom: 104px;
+  left: auto;
+  width: 392px;
+  max-height: min(62vh, 560px);
+  z-index: 45;
+}
+
+/* на минимальной ширине окна правый блок ужимается, чтобы не заезжать
+   на центральный транспорт */
+@media (max-width: 1100px) {
+  .player-right {
+    gap: 8px;
+    padding-right: 4px;
+  }
+  .player-divider {
+    display: none;
+  }
+  .vol-bar {
+    width: 96px;
+  }
+  .player-tools .tool-btn {
+    padding: 0 6px;
+  }
+}

@@ -4,7 +4,10 @@ import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
 import ArtistLine from './ArtistLine'
 import { usePanelOrigin } from './usePanelOrigin'
+import { removeOffline, saveTrack, useOffline } from '../offline'
 import {
+  IconCheck,
+  IconDownload,
   IconHeart,
   IconLayers,
   IconMute,
@@ -62,6 +65,9 @@ export default function PlayerBar(p: Props) {
   const barRef = useRef<HTMLDivElement>(null)
   const versionsRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState<string | null>(null)
+  const offline = useOffline()
+  const saveProgress = p.track ? offline.progress[p.track.id] : undefined
+  const savedLocal = p.track ? offline.ids.has(p.track.id) : false
   usePanelOrigin(versionsRef, '.alt-btn', Boolean(p.versions))
 
   // список версий сменился (другой трек или новая загрузка) — фильтр сбрасываем
@@ -112,14 +118,6 @@ export default function PlayerBar(p: Props) {
             <span className="now-title">{p.track?.title ?? 'Ничего не играет'}</span>
             {p.track ? (
               <>
-                <button
-                  className={`like-btn hero-like${p.liked ? ' on' : ''}`}
-                  onClick={p.onLike}
-                  title={p.liked ? 'Убрать из «Мне нравится»' : 'Мне нравится'}
-                  aria-pressed={p.liked}
-                >
-                  <IconHeart width={15} height={15} filled={p.liked} />
-                </button>
                 {p.source && (
                   <span
                     className={`src-pill ${p.source}`}
@@ -179,6 +177,41 @@ export default function PlayerBar(p: Props) {
             <div className="now-copy" title={p.copyLabel}>
               {p.copyLabel}
             </div>
+          ) : null}
+        </div>
+        <div className="now-actions">
+          <button
+            className={`tbtn like-tbtn${p.liked ? ' on' : ''}`}
+            onClick={p.onLike}
+            disabled={!p.track}
+            title={p.liked ? 'Убрать из «Мне нравится»' : 'Мне нравится'}
+            aria-pressed={p.liked}
+          >
+            <IconHeart width={15} height={15} filled={p.liked} />
+          </button>
+          {p.track ? (
+            <button
+              className={`tbtn save-tbtn${savedLocal ? ' on' : ''}${saveProgress ? ' saving' : ''}`}
+              onClick={() => {
+                if (!p.track || saveProgress) return
+                if (savedLocal) void removeOffline(p.track.id).catch(() => undefined)
+                else void saveTrack(p.track).catch(() => undefined)
+              }}
+              disabled={!p.track || Boolean(saveProgress)}
+              title={
+                saveProgress
+                  ? `Сохраняю… ${saveProgress.percent ?? 0}%`
+                  : savedLocal
+                    ? 'Удалить локальную копию'
+                    : 'Сохранить трек локально'
+              }
+              aria-pressed={savedLocal}
+            >
+              {savedLocal ? <IconCheck width={15} height={15} /> : <IconDownload width={15} height={15} />}
+              {saveProgress?.percent != null ? (
+                <span className="save-percent">{saveProgress.percent}%</span>
+              ) : null}
+            </button>
           ) : null}
         </div>
       </div>
