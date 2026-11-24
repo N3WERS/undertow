@@ -706,14 +706,6 @@ export default function App() {
     [toast]
   )
 
-  const playOriginalVersion = useCallback(() => {
-    const t = versionBaseRef.current ?? queueTrackOf()
-    if (!t) return
-    setVersions(null)
-    versionIdsRef.current = new Set()
-    playTrack(t, [t])
-  }, [playTrack, queueTrackOf])
-
   // переключились на другой трек — старый список версий больше не актуален
   useEffect(() => {
     const id = track?.id
@@ -1003,7 +995,6 @@ export default function App() {
         }}
         onPickVersion={pickVersion}
         onAddVersion={addVersion}
-        onPlayOriginal={playOriginalVersion}
         onRestoreOriginal={() => void restoreOriginal()}
         liked={track ? likedIds.has(track.id) : false}
         onLike={() => track && toggleLike(track)}

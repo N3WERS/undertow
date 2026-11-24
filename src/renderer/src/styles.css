@@ -1735,23 +1735,8 @@ img {
   color: var(--text-mute);
   padding: 4px 6px 8px;
 }
-.alt-head-note {
-  display: block;
-  margin-top: 3px;
-  font-size: 10.5px;
-  letter-spacing: 0;
-  text-transform: none;
-  color: rgba(255, 255, 255, 0.38);
-}
 .versions-menu {
   width: 386px;
-}
-.alt-original {
-  background: rgba(255, 255, 255, 0.035);
-  margin-bottom: 4px;
-}
-.alt-original .alt-title {
-  font-weight: 600;
 }
 .alt-chips {
   /* без горизонтальной прокрутки: все метки должны быть достижимы мышью,
@@ -4928,7 +4913,7 @@ img {
 .alt-body {
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 8px 10px;
+  padding: 0 8px 10px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
@@ -4948,8 +4933,14 @@ img {
   background-color: rgba(255, 255, 255, 0.28);
 }
 .versions-menu .alt-chips {
-  background: rgba(14, 21, 30, 0.96);
+  top: 0;
+  margin: 0 -8px 8px;
+  padding: 7px 8px 8px;
+  background: rgba(14, 21, 30, 0.97);
   backdrop-filter: blur(8px);
+}
+.alt-body > .alt-restore:first-child {
+  margin-top: 6px;
 }
 
 .queue-head .queue-shuffle {

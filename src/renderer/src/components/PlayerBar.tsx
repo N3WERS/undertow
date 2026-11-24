@@ -34,7 +34,6 @@ interface Props {
   onVersions: () => void
   onPickVersion: (v: TrackVersion) => void
   onAddVersion: (v: TrackVersion) => void
-  onPlayOriginal: () => void
   onRestoreOriginal: () => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
@@ -295,10 +294,6 @@ export default function PlayerBar(p: Props) {
                     <span className="alt-meta">играть оригинал из источника, а не копию</span>
                   </button>
                 ) : null}
-                <button className="alt-item alt-original" onClick={p.onPlayOriginal}>
-                  <span className="alt-title">оригинал — {p.track.title}</span>
-                  <span className="alt-meta">{p.track.artist} · как в источнике</span>
-                </button>
                 {p.versions.loading ? (
                   <div className="alt-empty">
                     <span className="spinner" /> ищу ремиксы и каверы…
