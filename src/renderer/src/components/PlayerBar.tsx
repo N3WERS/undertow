@@ -8,8 +8,10 @@ import { removeOffline, saveTrack, useOffline } from '../offline'
 import {
   IconCheck,
   IconDownload,
+  IconExpand,
   IconHeart,
   IconLayers,
+  IconListPlus,
   IconMute,
   IconNext,
   IconPause,
@@ -17,6 +19,7 @@ import {
   IconPlay,
   IconPrev,
   IconQueue,
+  IconRadio,
   IconText,
   IconVolume,
   IconWave,
@@ -48,6 +51,9 @@ interface Props {
   onToggleLyrics: () => void
   /** слова реально нашлись — иначе кнопку не показываем */
   hasLyrics: boolean
+  onRadio: () => void
+  radioLoading?: boolean
+  onAddToPlaylist: () => void
   /** RMS текущего трека 0…1 — «дыхание» подсветки */
   level?: number
   normalize: boolean
@@ -59,6 +65,8 @@ interface Props {
   onPrev: () => void
   onSeek: (sec: number) => void
   onVolume: (v: number) => void
+  /** открыть полноэкранный плеер */
+  onExpand: () => void
 }
 
 export default function PlayerBar(p: Props) {
@@ -97,9 +105,22 @@ export default function PlayerBar(p: Props) {
         p.track && !p.playing ? ' paused' : ''
       }`}
       style={{ '--rms': Math.min(1, Math.max(0, p.level ?? live.rms)).toFixed(3) } as CSSProperties}
+      onClick={(e) => {
+        if (!p.track) return
+        const el = e.target as HTMLElement
+        if (el.closest('button, a, input, .bar, .vol-bar, .player-tools, .alt-menu')) return
+        p.onExpand()
+      }}
     >
       <div className={`now${p.track ? '' : ' now-empty'}`}>
-        <div className="now-media">
+        <button
+          className="now-media"
+          onClick={() => p.track && p.onExpand()}
+          disabled={!p.track}
+          title={p.track ? 'Открыть плеер' : undefined}
+          aria-label="Открыть плеер"
+          aria-haspopup="dialog"
+        >
           {p.track?.coverUrl ? (
             <img className="now-cover" src={p.track.coverUrl} alt="" />
           ) : (
@@ -112,7 +133,12 @@ export default function PlayerBar(p: Props) {
             <i />
             <i />
           </span>
-        </div>
+          {p.track ? (
+            <span className="now-expand" aria-hidden="true">
+              <IconExpand width={17} height={17} />
+            </span>
+          ) : null}
+        </button>
         <div className="now-text">
           <div className="now-title-row">
             <span className="now-title">{p.track?.title ?? 'Ничего не играет'}</span>
@@ -395,6 +421,23 @@ export default function PlayerBar(p: Props) {
             ) : null}
           </div>
         ) : null}
+          <button
+            className={`tool-btn radio-btn${p.radioLoading ? ' busy' : ''}`}
+            onClick={p.onRadio}
+            disabled={p.radioLoading || !p.track}
+            title={p.radioLoading ? 'Ищу похожие треки…' : 'Радио по этому треку'}
+            aria-label="Радио по этому треку"
+          >
+            {p.radioLoading ? <span className="spinner" /> : <IconRadio width={14} height={14} />}
+          </button>
+          <button
+            className="tool-btn"
+            onClick={p.onAddToPlaylist}
+            title="Добавить трек в плейлист"
+            aria-label="Добавить в плейлист"
+          >
+            <IconListPlus width={14} height={14} />
+          </button>
           <button
             className={`tool-btn norm-btn${p.normalize ? ' on' : ''}`}
             onClick={() => p.onNormalize(!p.normalize)}

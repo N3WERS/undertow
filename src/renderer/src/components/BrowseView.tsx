@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { BrowsePage, Track } from '../types'
 import TrackList from './TrackList'
 import { IconBookmark, IconPlay, IconRadio } from './Icons'
@@ -55,6 +56,41 @@ export default function BrowseView({
   albumSaved,
   onToggleAlbum
 }: Props) {
+  const [genre, setGenre] = useState<{ id: string; name: string }[]>([])
+  const genreArtist = page
+    ? kind === 'artist'
+      ? page.title
+      : page.tracks[0]?.artist ?? page.subtitle.split('·')[0]?.trim() ?? ''
+    : ''
+  const firstYmId = page?.tracks[0]
+  const trackYmId =
+    firstYmId?.provider === 'yandex' && /^\d+$/.test(firstYmId.artistId ?? '')
+      ? firstYmId.artistId
+      : undefined
+  const genreYmId = page?.id?.startsWith('ym-artist:')
+    ? page.id.slice('ym-artist:'.length)
+    : trackYmId
+
+  useEffect(() => {
+    if (!genreArtist) {
+      setGenre([])
+      return
+    }
+    let alive = true
+    setGenre([])
+    void window.undertow
+      .genreForArtist(genreArtist, genreYmId)
+      .then((items) => {
+        if (alive) setGenre(items)
+      })
+      .catch(() => {
+        if (alive) setGenre([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [genreArtist, genreYmId])
+
   const head = (
     <div className="browse-top">
       <button className="back-btn" onClick={onBack} title="Назад">
@@ -99,12 +135,28 @@ export default function BrowseView({
     <div className="scroll">
       {head}
 
-      <div className="browse-head fade-up">
+      <div className="browse-head surface-hero surface-deep fade-up">
+        {page.coverUrl ? (
+          <div className="browse-wash" style={{ backgroundImage: `url(${page.coverUrl})` }} aria-hidden="true" />
+        ) : null}
+        <div className="browse-scrim" aria-hidden="true" />
         {page.coverUrl ? (
           <img className="browse-cover" src={page.coverUrl} alt="" />
         ) : (
           <div className="browse-cover" />
         )}
+        {genre.length ? (
+          <div className="browse-genre">
+            <span className="browse-genre-name">
+              {genre[0].name.charAt(0).toUpperCase() + genre[0].name.slice(1)}
+            </span>
+            {genre.length > 1 ? (
+              <span className="browse-genre-more">
+                {genre[1].name.charAt(0).toUpperCase() + genre[1].name.slice(1)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <div className="browse-info">
           <h1 className="browse-title">{page.title}</h1>
           <p className="browse-sub">{page.subtitle}</p>

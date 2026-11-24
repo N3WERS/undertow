@@ -52,7 +52,7 @@ export default function Sidebar({ view, onChange, state }: Props) {
 
       <div className="sidebar-bottom">
         {row(settings)}
-        <div className="sidebar-foot">
+        <div className="sidebar-foot surface-hero surface-deep">
           <div className="foot-title">Источники</div>
           <div className="row">
             <span className="foot-name">

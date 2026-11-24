@@ -102,6 +102,11 @@ export interface GenreInfo {
   weight: number
 }
 
+export interface GenreTag {
+  id: string
+  name: string
+}
+
 interface Entry {
   at: number
   genres: string[]
@@ -322,6 +327,35 @@ export function list(): GenreInfo[] {
 
 export function nameOf(id: string): string {
   return BUCKET_BY_ID.get(id)?.name ?? id
+}
+
+function tagsOf(ids: string[] | undefined): GenreTag[] {
+  return (ids ?? [])
+    .map((id) => ({ id, name: nameOf(id) }))
+    .filter((g) => g.name !== g.id)
+    .slice(0, 2)
+}
+
+/**
+ * Жанр конкретного артиста для шапки страницы. В отличие от `ensure()` not
+ * привязан к библиотеке: если тега нет — спрашиваем iTunes (и Яндекс, если
+ * известен его id). Результат кладём в тот же кэш, поэтому повторно сеть
+ * не дёргается.
+ */
+export async function forArtist(name: string, yandexId?: string): Promise<GenreTag[]> {
+  loadFile()
+  const k = key(name)
+  const previous = cache?.get(k)
+  if (fresh(previous)) return tagsOf(previous?.genres)
+
+  const entry = await tagOne(primary(name), yandexId, getYandexToken())
+  if (!cache) cache = new Map()
+  if (entry.genres.length || !previous?.genres.length) {
+    cache.set(k, entry)
+    dirty = true
+    saveFile()
+  }
+  return tagsOf(cache.get(k)?.genres)
 }
 
 /** Жанр известен (есть хотя бы один тег) — иначе артист считается неизвестным. */

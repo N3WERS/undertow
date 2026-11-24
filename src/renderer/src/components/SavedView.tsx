@@ -73,11 +73,6 @@ export default function SavedView(p: Props) {
         </div>
       </div>
 
-      <div className="notice saved-note">
-        Копии лежат на диске и играют первыми — даже без сети и без Плюса. Кнопка со стрелкой в строке трека сохраняет
-        его сюда, галочка означает, что копия уже есть.
-      </div>
-
       {offline.error && <div className="notice error">{offline.error}</div>}
 
       {!offline.ready ? (

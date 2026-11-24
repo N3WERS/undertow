@@ -55,7 +55,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
         </div>
       </div>
 
-      <section className="panel">
+      <section className="panel surface-hero surface-deep">
         <div className="panel-head">
           <div>
             <h2>Яндекс.Музыка</h2>
@@ -139,7 +139,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel surface-hero surface-deep">
         <div className="panel-head">
           <div>
             <h2>Звук</h2>
@@ -178,7 +178,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
         </label>
       </section>
 
-      <section className="panel">
+      <section className="panel surface-hero surface-deep">
         <div className="panel-head">
           <div>
             <h2>YouTube</h2>

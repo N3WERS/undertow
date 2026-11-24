@@ -13,6 +13,7 @@ import PlaylistsView from './components/PlaylistsView'
 import PlaylistPicker from './components/PlaylistPicker'
 import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
+import NowPlaying from './components/NowPlaying'
 import { AudioEngine, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
@@ -27,6 +28,7 @@ import type {
   TrackVersion
 } from './types'
 import { APP_VERSION } from './version'
+import appIcon from './assets/app-icon.png'
 
 // лента и поиск не должны перерисовываться 10 раз в секунду из-за прогресса плеера
 const Home = memo(HomeView)
@@ -76,7 +78,11 @@ export default function App() {
     shuffled: false
   })
   const [queueOpen, setQueueOpen] = useState(false)
+  const [theaterOpen, setTheaterOpen] = useState(false)
   const [resolving, setResolving] = useState(false)
+  useEffect(() => {
+    if (!track && theaterOpen) setTheaterOpen(false)
+  }, [track, theaterOpen])
   const [volume, setVolume] = useState(() => readNum('undertow.volume', 0.85))
   const [crossfade, setCrossfade] = useState(() => readNum('undertow.crossfade', 0))
   const [normalize, setNormalize] = useState(() => localStorage.getItem('undertow.normalize') !== '0')
@@ -843,15 +849,10 @@ export default function App() {
         : 'yt-dlp не найден'
 
   return (
-    <div className="app">
+    <div className={`app${theaterOpen ? ' theater-on' : ''}`}>
       <header className="titlebar">
         <div className="brand">
-          <span className="brand-mark">
-            <i />
-            <i />
-            <i />
-            <i />
-          </span>
+          <img className="brand-mark" src={appIcon} alt="" draggable={false} />
           <span className="brand-name">Undertow</span>
           <span className="brand-by">
             by <b>N3WERS</b>
@@ -954,8 +955,6 @@ export default function App() {
               onArtistRadio={(name) => void startRadio({ name })}
               radioLoading={radioLoading}
               onHover={hoverPrewarm}
-              getSpectrum={() => engineRef.current?.spectrum() ?? null}
-              getEnergy={() => engineRef.current?.energy() ?? 0}
             />
           )}
 
@@ -1116,7 +1115,103 @@ export default function App() {
           setLyricsOpen(!lyricsOpen)
         }}
         hasLyrics={hasLyrics}
+        onRadio={() => track && void startSimilar(track)}
+        radioLoading={radioLoading}
+        onAddToPlaylist={() => track && setPickerTrack(track)}
+        onExpand={() => {
+          if (!track) return
+          setQueueOpen(false)
+          setLyricsOpen(false)
+          setVersions(null)
+          setTheaterOpen(true)
+        }}
       />
+
+      {theaterOpen && track ? (
+        <NowPlaying
+          track={track}
+          playing={snap.playing}
+          resolving={resolving}
+          progress={snap.time}
+          duration={snap.duration}
+          volume={volume}
+          quality={quality}
+          source={source}
+          copyLabel={copyLabel}
+          versions={versions}
+          onVersions={() => {
+            if (versions) setVersions(null)
+            else {
+              setQueueOpen(false)
+              setLyricsOpen(false)
+              void openVersions()
+            }
+          }}
+          onPickVersion={pickVersion}
+          onAddVersion={addVersion}
+          onRestoreOriginal={() => void restoreOriginal()}
+          queue={queueState.queue}
+          queueIndex={queueState.index}
+          queueShuffled={queueState.shuffled}
+          onQueuePlay={(i) => void engineRef.current?.playAt(i)}
+          onQueueMove={(from, to) => engineRef.current?.moveInQueue(from, to)}
+          onQueueRemove={(i) => engineRef.current?.removeFromQueue(i)}
+          onQueueShuffle={(on) => engineRef.current?.setShuffle(on)}
+          onQueueClear={() => {
+            engineRef.current?.clearQueue()
+            radioRef.current = null
+            flowRef.current = false
+            setFlowActive(false)
+            setTrack(null)
+            setQuality(null)
+            setCopyLabel(null)
+            setSource(null)
+            void window.undertow.queueClear().catch(() => undefined)
+            toast('Очередь очищена')
+          }}
+          queueOpen={queueOpen}
+          onToggleQueue={() => {
+            if (!queueOpen) {
+              setVersions(null)
+              setLyricsOpen(false)
+            }
+            setQueueOpen(!queueOpen)
+          }}
+          lyricsOpen={lyricsOpen}
+          onToggleLyrics={() => {
+            if (!lyricsOpen) {
+              setQueueOpen(false)
+              setVersions(null)
+            }
+            setLyricsOpen(!lyricsOpen)
+          }}
+          hasLyrics={hasLyrics}
+          normalize={normalize}
+          onNormalize={setNormalize}
+          liked={track ? likedIds.has(track.id) : false}
+          onLike={() => toggleLike(track)}
+          onToggle={toggle}
+          onNext={() => go(1)}
+          onPrev={() => go(-1)}
+          onSeek={(sec) => {
+            engineRef.current?.seek(sec)
+            setProgress(sec, snap.duration, 0)
+          }}
+          onVolume={setVolume}
+          onOpenArtist={openArtist}
+          onOpenAlbum={openAlbum}
+          onRadio={() => void startSimilar(track)}
+          radioLoading={radioLoading}
+          onAddToPlaylist={() => setPickerTrack(track)}
+          escBlocked={Boolean(pickerTrack)}
+          onClose={() => {
+            setTheaterOpen(false)
+            setVersions(null)
+            setQueueOpen(false)
+            setLyricsOpen(false)
+          }}
+        />
+      ) : null}
 
       {lyricsOpen && (
         <LyricsPanel

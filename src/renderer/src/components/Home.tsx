@@ -126,7 +126,7 @@ function Hero({
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
 }) {
   return (
-    <section className="hero fade-up">
+    <section className="hero surface-hero surface-deep fade-up">
       {track.coverUrl && <div className="hero-bg" style={{ backgroundImage: `url(${track.coverUrl})` }} />}
       <div className="hero-meta">
         <span className="hero-kicker">{kicker}</span>

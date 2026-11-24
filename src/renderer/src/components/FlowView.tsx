@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Track } from '../types'
 import { fmtTime } from './TrackList'
 import { IconPause, IconPlay, IconWave } from './Icons'
+import TopoField from './TopoField'
 
 interface Props {
   queue: Track[]
@@ -15,9 +16,6 @@ interface Props {
   onArtistRadio: (name: string) => void
   radioLoading?: boolean
   onHover?: (track: Track) => void
-  /** спектр текущего трека и его громкость 0…1 — для живой визуализации */
-  getSpectrum?: () => Uint8Array | null
-  getEnergy?: () => number
 }
 
 /** Аватар-заглушка для артиста без обложки: буква на градиенте по имени. */
@@ -38,9 +36,7 @@ export default function FlowView({
   onToggle,
   onArtistRadio,
   radioLoading,
-  onHover,
-  getSpectrum,
-  getEnergy
+  onHover
 }: Props) {
   const [seeds, setSeeds] = useState<{ name: string; weight: number }[]>([])
   const [seedRefs, setSeedRefs] = useState<{ id?: string; name: string; coverUrl?: string }[]>([])
@@ -86,85 +82,13 @@ export default function FlowView({
   }
 
   const alive = active && playing
-  const heroRef = useRef<HTMLElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const spectrumRef = useRef(getSpectrum)
-  spectrumRef.current = getSpectrum
-  const energyRef = useRef(getEnergy)
-  energyRef.current = getEnergy
-
   const current = active && index >= 0 ? queue[index] : undefined
   const upcoming = active && index >= 0 ? queue.slice(index + 1, index + 9) : []
 
-  // Визуализация: пока поток играет, вокруг орбиты пляшут полосы спектра,
-  // а --level «дышит» вместе с громкостью. В паузе — статичное кольцо точек.
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const hero = heroRef.current
-    const ctx = canvas?.getContext('2d')
-    if (!canvas || !hero || !ctx) return
-    let raf = 0
-
-    const paint = () => {
-      raf = requestAnimationFrame(paint)
-      const dpr = window.devicePixelRatio || 1
-      const size = canvas.clientWidth || 188
-      if (canvas.width !== Math.round(size * dpr)) {
-        canvas.width = Math.round(size * dpr)
-        canvas.height = Math.round(size * dpr)
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.clearRect(0, 0, size, size)
-      const c = size / 2
-      const level = alive ? Math.min(1, (energyRef.current?.() ?? 0) * 1.7) : 0
-      hero.style.setProperty('--level', level.toFixed(3))
-
-      const data = alive ? spectrumRef.current?.() : null
-      if (!data) {
-        ctx.fillStyle = 'rgba(124, 238, 230, 0.26)'
-        for (let i = 0; i < 72; i++) {
-          const a = (i / 72) * Math.PI * 2
-          ctx.beginPath()
-          ctx.arc(c + Math.cos(a) * size * 0.42, c + Math.sin(a) * size * 0.42, 1.3, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        return
-      }
-
-      const inner = size * 0.29
-      // зеркалим спектр: круг получается симметричным и «цветёт» с обеих сторон
-      const total = data.length * 2
-      for (let i = 0; i < total; i++) {
-        const v = data[i < data.length ? i : total - 1 - i] / 255
-        if (v < 0.02) continue
-        const a = (i / total) * Math.PI * 2 - Math.PI / 2
-        const len = 4 + Math.pow(v, 1.35) * size * 0.2
-        ctx.strokeStyle = `hsla(${165 + (i / total) * 110}, 95%, ${58 + v * 18}%, ${0.18 + v * 0.75})`
-        ctx.lineWidth = Math.max(1.4, size * 0.0095)
-        ctx.lineCap = 'round'
-        ctx.beginPath()
-        ctx.moveTo(c + Math.cos(a) * inner, c + Math.sin(a) * inner)
-        ctx.lineTo(c + Math.cos(a) * (inner + len), c + Math.sin(a) * (inner + len))
-        ctx.stroke()
-      }
-
-      const glow = ctx.createRadialGradient(c, c, 0, c, c, inner)
-      glow.addColorStop(0, `rgba(124, 238, 230, ${0.08 + level * 0.2})`)
-      glow.addColorStop(1, 'rgba(124, 238, 230, 0)')
-      ctx.fillStyle = glow
-      ctx.beginPath()
-      ctx.arc(c, c, inner, 0, Math.PI * 2)
-      ctx.fill()
-    }
-
-    paint()
-    return () => cancelAnimationFrame(raf)
-  }, [alive])
-
   return (
     <div className={`scroll flow-page${alive ? ' live' : ''}`}>
-      <section className={`flow-hero fade-up${alive ? ' live' : ''}`} ref={heroRef}>
-        <div className="flow-glow" aria-hidden="true" />
+      <section className={`flow-hero fade-up${alive ? ' live' : ''}`}>
+        <TopoField started={active} playing={alive} />
         <div className="flow-hero-text">
           <span className="flow-kicker">поток без конца</span>
           <h1 className="flow-title">Течение</h1>
@@ -217,20 +141,13 @@ export default function FlowView({
                 {playing ? 'звучит' : 'на паузе'}
               </span>
             ) : null}
-            <span className="flow-hint">30 треков сразу — дальше само</span>
           </div>
-        </div>
-        <div className="flow-orb" aria-hidden="true">
-          <canvas className="flow-canvas" ref={canvasRef} />
-          <span className="flow-orb-ring" />
-          <span className="flow-orb-ring slow" />
-          <IconWave width={34} height={34} />
         </div>
       </section>
 
       {active && current ? (
         <section className="flow-live-block fade-up">
-          <div className="flow-now">
+          <div className="flow-now surface-hero surface-deep">
             {current.coverUrl ? <img className="flow-now-cover" src={current.coverUrl} alt="" /> : <div className="flow-now-cover" />}
             <div className="flow-now-meta">
               <span className="flow-now-label">
@@ -248,7 +165,7 @@ export default function FlowView({
             </button>
           </div>
 
-          <div className="flow-next">
+          <div className="flow-next surface-hero surface-deep">
             <div className="flow-next-head">
               <span>дальше</span>
               <span className="flow-next-count">ещё {Math.max(0, queue.length - index - 1)}</span>

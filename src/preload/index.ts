@@ -15,6 +15,8 @@ const api = {
   queueClear: () => ipcRenderer.invoke('queue:clear'),
   flowStart: (genre?: string) => ipcRenderer.invoke('flow:start', genre),
   flowGenres: () => ipcRenderer.invoke('flow:genres'),
+  genreForArtist: (name: string, yandexId?: string) =>
+    ipcRenderer.invoke('genres:artist', name, yandexId),
   lyrics: (track: unknown) => ipcRenderer.invoke('lyrics:get', track),
   lyricsHas: (track: unknown) => ipcRenderer.invoke('lyrics:has', track),
   playlists: () => ipcRenderer.invoke('playlists:list'),

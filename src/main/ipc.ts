@@ -9,6 +9,7 @@ import * as versions from './versions'
 import * as releases from './releases'
 import * as offline from './offline'
 import * as savedAlbums from './savedAlbums'
+import * as genres from './genres'
 
 export function registerIpc(): void {
   ipcMain.handle('home', async () => providers.home())
@@ -60,6 +61,9 @@ export function registerIpc(): void {
 
   ipcMain.handle('flow:start', async (_e, genre?: string) => providers.flowStart(genre))
   ipcMain.handle('flow:genres', async () => providers.flowGenres())
+  ipcMain.handle('genres:artist', async (_e, name: string, yandexId?: string) =>
+    genres.forArtist(String(name ?? ''), yandexId ? String(yandexId) : undefined)
+  )
 
   ipcMain.handle('lyrics:get', async (_e, track: Track) => providers.lyricsOf(track))
   ipcMain.handle('lyrics:has', async (_e, track: Track) => providers.lyricsHas(track))

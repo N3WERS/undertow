@@ -72,7 +72,7 @@ export function hide(sectionId: string): string[] {
   if (!id) return hidden()
   const current = load()
   if (current.hidden.includes(id)) return [...current.hidden]
-  const next: Prefs = { version: FILE_VERSION, hidden: [...current.hidden, id] }
+  const next: Prefs = { ...current, version: FILE_VERSION, hidden: [...current.hidden, id] }
   save(next)
   return [...next.hidden]
 }
@@ -86,6 +86,6 @@ export function unhide(sectionId: string): string[] {
 
 /** Вернуть все скрытые секции. */
 export function clearHidden(): string[] {
-  save({ version: FILE_VERSION, hidden: [] })
+  save({ ...load(), version: FILE_VERSION, hidden: [] })
   return []
 }
