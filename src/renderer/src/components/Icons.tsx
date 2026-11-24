@@ -217,3 +217,12 @@ export const IconFolder = (p: P) => (
     <path d="M3.5 7.2a1.7 1.7 0 0 1 1.7-1.7h4.1l2 2.2h6.5a1.7 1.7 0 0 1 1.7 1.7v8.9a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7z" />
   </svg>
 )
+
+export const IconBookmark = ({ filled, ...p }: P & { filled?: boolean }) => (
+  <svg {...base(p)}>
+    <path
+      d="M6.5 4.5h11a1 1 0 0 1 1 1v14.1l-6.5-4.1-6.5 4.1V5.5a1 1 0 0 1 1-1z"
+      fill={filled ? 'currentColor' : 'none'}
+    />
+  </svg>
+)

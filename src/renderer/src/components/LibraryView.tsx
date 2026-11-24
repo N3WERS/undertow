@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import type { Track } from '../types'
+import type { SavedAlbum, Track } from '../types'
 import TrackList from './TrackList'
+import { IconPlay, IconX } from './Icons'
 
 interface Props {
   likes: Track[]
   history: Track[]
+  albums: SavedAlbum[]
   likedIds: Set<string>
   currentId: string | null
   playing: boolean
@@ -23,9 +25,20 @@ interface Props {
   onAddToPlaylist?: (track: Track) => void
   onSimilar?: (track: Track) => void
   onAddToQueue?: (track: Track) => void
+  onPlayAlbum: (album: SavedAlbum) => void
+  onRemoveAlbum: (album: SavedAlbum) => void
 }
 
-type Tab = 'likes' | 'history'
+type Tab = 'likes' | 'albums' | 'history'
+
+const albumWord = (n: number): string => {
+  const mod100 = n % 100
+  const mod10 = n % 10
+  if (mod100 >= 11 && mod100 <= 14) return 'альбомов'
+  if (mod10 === 1) return 'альбом'
+  if (mod10 >= 2 && mod10 <= 4) return 'альбома'
+  return 'альбомов'
+}
 
 export default function LibraryView(p: Props) {
   const [tab, setTab] = useState<Tab>('likes')
@@ -37,7 +50,8 @@ export default function LibraryView(p: Props) {
         <div>
           <h1>Библиотека</h1>
           <p>
-            {p.likes.length} в «Мне нравится» · {p.history.length} в истории
+            {p.likes.length} в «Мне нравится» · {p.albums.length} {albumWord(p.albums.length)} · {p.history.length} в
+            истории
           </p>
         </div>
         <div className="head-actions">
@@ -72,13 +86,61 @@ export default function LibraryView(p: Props) {
           Мне нравится
           <span className="tab-count">{p.likes.length}</span>
         </button>
+        <button className={`tab${tab === 'albums' ? ' on' : ''}`} onClick={() => setTab('albums')}>
+          Альбомы
+          <span className="tab-count">{p.albums.length}</span>
+        </button>
         <button className={`tab${tab === 'history' ? ' on' : ''}`} onClick={() => setTab('history')}>
           История
           <span className="tab-count">{p.history.length}</span>
         </button>
       </div>
 
-      {list.length === 0 ? (
+      {tab === 'albums' ? (
+        p.albums.length === 0 ? (
+          <div className="empty">
+            <b>Пока нет сохранённых альбомов</b>
+            Открой страницу альбома и нажми «Сохранить альбом» — он появится здесь для быстрого доступа.
+          </div>
+        ) : (
+          <div className="saved-albums">
+            {p.albums.map((a) => (
+              <div className="saved-album-card" key={a.id}>
+                <button
+                  className="saved-album-open"
+                  onClick={() => p.onOpenAlbum?.({ id: a.id, title: a.title, artist: a.artist })}
+                  title={`Открыть альбом: ${a.title}`}
+                >
+                  <span className="saved-album-cover">
+                    {a.coverUrl ? <img src={a.coverUrl} alt="" loading="lazy" /> : null}
+                  </span>
+                  <span className="saved-album-title">{a.title}</span>
+                  <span className="saved-album-sub">
+                    {a.artist}
+                    {a.year ? ` · ${a.year}` : ''}
+                  </span>
+                </button>
+                <div className="saved-album-actions">
+                  <button
+                    className="saved-album-action play"
+                    title="Слушать альбом"
+                    onClick={() => p.onPlayAlbum(a)}
+                  >
+                    <IconPlay width={14} height={14} />
+                  </button>
+                  <button
+                    className="saved-album-action remove"
+                    title="Убрать альбом из библиотеки"
+                    onClick={() => p.onRemoveAlbum(a)}
+                  >
+                    <IconX width={13} height={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : list.length === 0 ? (
         <div className="empty">
           <b>{tab === 'likes' ? 'Пока пусто' : 'Ещё ничего не слушал'}</b>
           {tab === 'likes'

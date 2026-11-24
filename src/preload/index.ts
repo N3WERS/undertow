@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   home: () => ipcRenderer.invoke('home'),
+  albumsList: () => ipcRenderer.invoke('albums:list'),
+  albumsSave: (page: unknown) => ipcRenderer.invoke('albums:save', page),
+  albumsRemove: (id: string) => ipcRenderer.invoke('albums:remove', id),
   offlineList: () => ipcRenderer.invoke('offline:list'),
   offlineSave: (track: unknown) => ipcRenderer.invoke('offline:save', track),
   offlineRemove: (id: string) => ipcRenderer.invoke('offline:remove', id),

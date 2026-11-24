@@ -16,7 +16,16 @@ import PlayerBar from './components/PlayerBar'
 import { AudioEngine, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
-import type { BrowsePage, LibrarySnapshot, ProviderState, ReleaseItem, Section, Track, TrackVersion } from './types'
+import type {
+  BrowsePage,
+  LibrarySnapshot,
+  ProviderState,
+  ReleaseItem,
+  SavedAlbum,
+  Section,
+  Track,
+  TrackVersion
+} from './types'
 import { APP_VERSION } from './version'
 
 // лента и поиск не должны перерисовываться 10 раз в секунду из-за прогресса плеера
@@ -73,6 +82,7 @@ export default function App() {
   const [normalize, setNormalize] = useState(() => localStorage.getItem('undertow.normalize') !== '0')
 
   const [lib, setLib] = useState<LibrarySnapshot>({ likes: [], history: [], stats: { likes: 0, history: 0, updatedAt: null } })
+  const [savedAlbums, setSavedAlbums] = useState<SavedAlbum[]>([])
   const [importing, setImporting] = useState(false)
 
   const engineRef = useRef<AudioEngine | null>(null)
@@ -265,6 +275,7 @@ export default function App() {
   useEffect(() => {
     void loadHome()
     void reloadLibrary()
+    void window.undertow.albumsList().then(setSavedAlbums).catch(() => setSavedAlbums([]))
     void window.undertow.hiddenSections().then(setHidden).catch(() => setHidden([]))
     // старые записи лежали без исполнителей — дозаполняем в фоне, чтобы
     // заработали ссылки на артистов в истории и избранном
@@ -326,6 +337,44 @@ export default function App() {
     }
   }, [reloadLibrary, toast])
   importLikesRef.current = importLikes
+
+  /* --------------------------- сохранённые альбомы -------------------------- */
+
+  const pageArtist = browsePage?.tracks[0]?.artist || browsePage?.subtitle.split(' · ')[0] || ''
+  const savedAlbum = useMemo(() => {
+    if (!browsePage || browsePage.kind !== 'album') return null
+    const sameTitle = (a: SavedAlbum) =>
+      a.title.trim().toLowerCase() === browsePage.title.trim().toLowerCase() &&
+      a.artist.trim().toLowerCase() === pageArtist.trim().toLowerCase()
+    return savedAlbums.find((a) => a.id === browsePage.id || sameTitle(a)) ?? null
+  }, [browsePage, pageArtist, savedAlbums])
+
+  const toggleSavedAlbum = useCallback(async () => {
+    if (!browsePage || browsePage.kind !== 'album') return
+    try {
+      if (savedAlbum) {
+        setSavedAlbums(await window.undertow.albumsRemove(savedAlbum.id))
+        toast(`Альбом убран из библиотеки: ${savedAlbum.title}`)
+      } else {
+        setSavedAlbums(await window.undertow.albumsSave(browsePage))
+        toast(`Альбом сохранён в библиотеку: ${browsePage.title}`)
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    }
+  }, [browsePage, savedAlbum, toast])
+
+  const removeSavedAlbum = useCallback(
+    async (album: SavedAlbum) => {
+      try {
+        setSavedAlbums(await window.undertow.albumsRemove(album.id))
+        toast(`Альбом убран из библиотеки: ${album.title}`)
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), 'error')
+      }
+    },
+    [toast]
+  )
 
   /* ------------------- очередь между запусками (queue.json) ----------------- */
 
@@ -532,6 +581,18 @@ export default function App() {
     setFlowActive(false)
     void engineRef.current?.setQueue(playable, at >= 0 ? at : 0)
   }, [])
+
+  const playSavedAlbum = useCallback(
+    (album: SavedAlbum) => {
+      const tracks = album.tracks.filter((t) => t.playable)
+      if (!tracks.length) {
+        toast(`В альбоме «${album.title}» нет доступных треков`, 'error')
+        return
+      }
+      playTrack(tracks[0], tracks)
+    },
+    [playTrack, toast]
+  )
 
   const loadReleases = useCallback(
     async (force = false) => {
@@ -838,6 +899,8 @@ export default function App() {
               radioLoading={radioLoading}
               onAddToPlaylist={setPickerTrack}
               onSimilar={(t) => void startSimilar(t)}
+              albumSaved={Boolean(savedAlbum)}
+              onToggleAlbum={() => void toggleSavedAlbum()}
             />
           )}
 
@@ -968,6 +1031,7 @@ export default function App() {
             <LibraryView
               likes={lib.likes}
               history={lib.history}
+              albums={savedAlbums}
               likedIds={likedIds}
               currentId={currentId}
               playing={snap.playing}
@@ -991,6 +1055,8 @@ export default function App() {
                   toast('История очищена')
                 })
               }}
+              onPlayAlbum={playSavedAlbum}
+              onRemoveAlbum={(album) => void removeSavedAlbum(album)}
             />
           )}
         </main>

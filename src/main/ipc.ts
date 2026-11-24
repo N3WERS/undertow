@@ -3,11 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { proxify } from './audioProxy'
 import * as providers from './providers'
-import type { Track } from './providers/types'
+import type { BrowsePage, Track } from './providers/types'
 import * as queueStore from './queueStore'
 import * as versions from './versions'
 import * as releases from './releases'
 import * as offline from './offline'
+import * as savedAlbums from './savedAlbums'
 
 export function registerIpc(): void {
   ipcMain.handle('home', async () => providers.home())
@@ -43,6 +44,10 @@ export function registerIpc(): void {
   ipcMain.handle('offline:reveal', async () => {
     await shell.openPath(offline.localRoot())
   })
+
+  ipcMain.handle('albums:list', async () => savedAlbums.list())
+  ipcMain.handle('albums:save', async (_e, page: BrowsePage) => savedAlbums.save(page))
+  ipcMain.handle('albums:remove', async (_e, id: string) => savedAlbums.remove(String(id)))
 
   ipcMain.handle('queue:get', async () => queueStore.load())
   ipcMain.handle(

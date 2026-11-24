@@ -87,6 +87,17 @@ export interface LikeResult {
   syncError: string | null
 }
 
+export interface SavedAlbum {
+  id: string
+  title: string
+  artist: string
+  year?: string
+  coverUrl?: string
+  type?: 'album' | 'single' | 'ep'
+  tracks: Track[]
+  savedAt: number
+}
+
 export interface OfflineEntry {
   track: Track
   /** имя файла внутри папки offline */
@@ -212,6 +223,9 @@ export interface UndertowApi {
   clearHiddenSections(): Promise<string[]>
   artistPage(ref: { id?: string; name?: string }): Promise<BrowsePage>
   albumPage(ref: { id?: string; title?: string; artist?: string; trackTitle?: string }): Promise<BrowsePage>
+  albumsList(): Promise<SavedAlbum[]>
+  albumsSave(page: BrowsePage): Promise<SavedAlbum[]>
+  albumsRemove(id: string): Promise<SavedAlbum[]>
   offlineList(): Promise<OfflineSnapshot>
   offlineSave(track: Track): Promise<OfflineEntry>
   offlineRemove(id: string): Promise<boolean>

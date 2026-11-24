@@ -1,6 +1,6 @@
 import type { BrowsePage, Track } from '../types'
 import TrackList from './TrackList'
-import { IconPlay, IconRadio } from './Icons'
+import { IconBookmark, IconPlay, IconRadio } from './Icons'
 
 interface Props {
   kind: 'artist' | 'album'
@@ -23,6 +23,9 @@ interface Props {
   /** «радио артиста»: своё + похожие, сразу в очередь */
   onRadio?: () => void
   radioLoading?: boolean
+  /** альбом уже сохранён в библиотеке */
+  albumSaved?: boolean
+  onToggleAlbum?: () => void
 }
 
 /**
@@ -48,7 +51,9 @@ export default function BrowseView({
   onSimilar,
   onOpenArtist,
   onRadio,
-  radioLoading
+  radioLoading,
+  albumSaved,
+  onToggleAlbum
 }: Props) {
   const head = (
     <div className="browse-top">
@@ -112,6 +117,17 @@ export default function BrowseView({
               <button className="ghost-btn radio-btn" onClick={onRadio} disabled={radioLoading}>
                 <IconRadio width={14} height={14} />
                 {radioLoading ? 'собираю…' : 'Радио'}
+              </button>
+            ) : null}
+            {kind === 'album' && onToggleAlbum ? (
+              <button
+                className={`ghost-btn save-album-btn${albumSaved ? ' on' : ''}`}
+                onClick={onToggleAlbum}
+                disabled={!page.tracks.length}
+                title={albumSaved ? 'Убрать альбом из библиотеки' : 'Сохранить альбом в библиотеку'}
+              >
+                <IconBookmark width={14} height={14} filled={albumSaved} />
+                {albumSaved ? 'В библиотеке' : 'Сохранить альбом'}
               </button>
             ) : null}
           </div>

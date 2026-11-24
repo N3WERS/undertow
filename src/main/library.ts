@@ -69,7 +69,7 @@ function sanitizeArtists(list: unknown): { id?: string; name: string }[] | undef
   return out.length ? out : undefined
 }
 
-function sanitizeTrack(t: Track): Track {
+export function sanitizeTrack(t: Track): Track {
   return {
     id: String(t.id),
     provider: t.provider === 'yandex' ? 'yandex' : 'youtube',
