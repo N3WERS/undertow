@@ -290,13 +290,8 @@ img {
   flex-direction: column;
   gap: 22px;
   padding: 18px 12px 14px;
-  border-right: 0;
-  background: linear-gradient(
-    90deg,
-    rgba(7, 11, 16, 0.38) 0%,
-    rgba(7, 11, 16, 0.2) 58%,
-    rgba(7, 11, 16, 0) 100%
-  );
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+  background: transparent;
   min-height: 0;
 }
 
@@ -4435,24 +4430,10 @@ img {
   isolation: isolate;
   overflow: hidden;
   gap: 16px;
-  border-right: 1px solid rgba(255, 255, 255, 0.045);
-  background: linear-gradient(
-    90deg,
-    rgba(7, 11, 16, 0.36) 0%,
-    rgba(7, 11, 16, 0.19) 62%,
-    rgba(7, 11, 16, 0.13) 100%
-  );
-}
-/* мягкая складка у края: граница читается, но нет смены цвета панели */
-.sidebar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 22px;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.2));
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+  /* тот же фон, что у контента; панель отделяет только тонкая линия —
+     так нет ни перепада цвета, ни эффекта утопленной тени */
+  background: transparent;
 }
 .sidebar-glow {
   position: absolute;
