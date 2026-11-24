@@ -31,6 +31,8 @@ interface Pool {
 interface Session {
   mode: 'yandex' | 'local'
   title: string
+  /** с какого пула начинать очередной круг: чтобы треки не шли всегда по порядку */
+  turn: number
   used: Set<string>
   /** скачанные, но ещё не отданные треки: чтобы не терять остаток страницы */
   pending: Track[]
@@ -56,6 +58,7 @@ function emptySession(mode: Session['mode'], title: string): Session {
   return {
     mode,
     title,
+    turn: 0,
     used: new Set(),
     pending: [],
     similar: [],
@@ -66,12 +69,47 @@ function emptySession(mode: Session['mode'], title: string): Session {
   }
 }
 
-function interleave(pools: Track[][], limit: number, used: Set<string>): Track[] {
+/** Случайный порядок: радио не должно каждый раз начинаться с одного трека. */
+function shuffle<T>(list: T[]): T[] {
+  const out = [...list]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+/**
+ * Первые треки каждого запуска радио. Берём не только топ-14, а более широкий
+ * верх списка (24), перемешиваем и следим, чтобы первый трек не совпал
+ * с прошлым запуском этого же артиста.
+ */
+const lastFirst = new Map<string, string>()
+
+function variedSeed(tracks: Track[], key: string, count: number): Track[] {
+  const pool = tracks.filter((t) => t.playable)
+  if (!pool.length) return []
+  const top = pool.slice(0, Math.max(count, 24))
+  const seed = shuffle(top).slice(0, count)
+  const prev = lastFirst.get(key)
+  if (prev && seed.length > 1 && seed[0].id === prev) {
+    const idx = seed.findIndex((t) => t.id !== prev)
+    if (idx > 0) [seed[0], seed[idx]] = [seed[idx], seed[0]]
+  }
+  lastFirst.set(key, seed[0]?.id ?? '')
+  return seed
+}
+
+function interleave(pools: Track[][], limit: number, used: Set<string>, start = 0): Track[] {
   const out: Track[] = []
+  const order =
+    pools.length > 1 && start % pools.length
+      ? [...pools.slice(start % pools.length), ...pools.slice(0, start % pools.length)]
+      : pools
   let added = true
   while (added && out.length < limit) {
     added = false
-    for (const pool of pools) {
+    for (const pool of order) {
       while (pool.length) {
         const next = pool.shift() as Track
         if (used.has(next.id) || !next.playable) continue
@@ -110,9 +148,11 @@ export async function start(token: string, artistId: string): Promise<{ title: s
     yandex.artistTracks(token, id, 50, 0).catch(() => [] as Track[])
   ])
   const name = info?.title ?? 'Артист'
-  const seed = own.filter((t) => t.playable).slice(0, SEED_TRACKS)
+  const seed = variedSeed(own, yandexKey(id), SEED_TRACKS)
 
-  const similar = (await yandex.similarArtists(token, id, NEIGHBOURS + 3).catch(() => [])).slice(0, NEIGHBOURS)
+  const similar = shuffle(
+    (await yandex.similarArtists(token, id, NEIGHBOURS + 3).catch(() => [])).slice(0, NEIGHBOURS + 3)
+  ).slice(0, NEIGHBOURS)
   const pages = await Promise.all(
     similar.map((a) => yandex.artistTracks(token, a.id, PAGE_SIZE, 0).catch(() => [] as Track[]))
   )
@@ -124,7 +164,8 @@ export async function start(token: string, artistId: string): Promise<{ title: s
   const mixed = interleave(
     pages.map((list) => [...list]),
     FIRST_FILL - seed.length,
-    session.used
+    session.used,
+    Math.floor(Math.random() * Math.max(1, pages.length))
   )
   sessions.set(yandexKey(id), session)
 
@@ -184,10 +225,12 @@ async function poolsFor(
 /** Догоняет пул до нужного размера, чередуя артистов. */
 function draw(session: Session, want: number): number {
   const before = session.pending.length
+  let start = session.turn++
   while (session.pending.length < want) {
     const lists = session.pools.map((p) => p.tracks)
     if (!lists.some((l) => l.length)) break
-    session.pending.push(...interleave(lists, want - session.pending.length, session.used))
+    session.pending.push(...interleave(lists, want - session.pending.length, session.used, start))
+    start = 0
     if (!session.pools.some((p) => p.tracks.length)) break
   }
   return session.pending.length - before
@@ -218,13 +261,16 @@ async function expand(session: Session): Promise<boolean> {
 
 export async function startLocal(ref: { id?: string; name?: string }): Promise<{ title: string; tracks: Track[] }> {
   const profile = await youtube.musicArtist({ id: ref.id, name: ref.name })
-  const seed = profile.tracks.filter((t) => t.playable).slice(0, SEED_TRACKS)
+  const seed = variedSeed(profile.tracks, localKey(profile.id), SEED_TRACKS)
 
   const session = emptySession('local', profile.name)
   for (const t of seed) session.used.add(t.id)
   session.known.add(profile.id)
 
-  const neighbours = profile.related.slice(0, NEIGHBOURS).filter((a) => a.id !== profile.id)
+  const neighbours = shuffle(profile.related.filter((a) => a.id !== profile.id).slice(0, NEIGHBOURS * 2)).slice(
+    0,
+    NEIGHBOURS
+  )
   session.pools = await poolsFor(neighbours, session.used)
   for (const n of neighbours) session.known.add(n.id)
   session.ring = 1
