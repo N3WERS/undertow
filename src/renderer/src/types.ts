@@ -194,11 +194,8 @@ export interface UndertowApi {
     items: { id: string; name: string; artists: number; weight: number }[]
     genre?: string
   }>
-  genreDetail(id: string): Promise<{
-    genre: { id: string; name: string; artists: number; weight: number } | null
-    artists: { name: string; weight: number; coverUrl?: string; artistId?: string }[]
-  }>
   lyrics(track: Track): Promise<Lyrics | null>
+  lyricsHas(track: Track): Promise<boolean>
   playlists(): Promise<PlaylistSummary[]>
   playlist(id: string): Promise<Playlist | null>
   playlistCreate(title: string): Promise<Playlist>

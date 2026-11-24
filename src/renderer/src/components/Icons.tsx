@@ -27,13 +27,6 @@ export const IconSearch = (p: P) => (
   </svg>
 )
 
-export const IconTag = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h5.2c.4 0 .8.16 1.06.44l7.3 7.3a1.5 1.5 0 0 1 0 2.12l-5.2 5.2a1.5 1.5 0 0 1-2.12 0l-7.3-7.3A1.5 1.5 0 0 1 4 10.7z" />
-    <circle cx="8.6" cy="8.6" r="1.4" />
-  </svg>
-)
-
 export const IconWave = (p: P) => (
   <svg {...base(p)}>
     <path d="M3 12h2l2-6 3 13 3-16 3 12 2-4h3" />

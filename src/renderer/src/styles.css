@@ -3740,68 +3740,7 @@ img {
   }
 }
 
-/* ============ Жанры ============ */
-.genres-page {
-  padding-bottom: 34px;
-}
-.genre-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
-  gap: 12px;
-}
-.genre-card {
-  position: relative;
-  overflow: hidden;
-  min-height: 116px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  text-align: left;
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  color: var(--text);
-  cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.genre-card::after {
-  content: '';
-  position: absolute;
-  right: -46px;
-  bottom: -52px;
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(94, 234, 212, 0.16), transparent 68%);
-  pointer-events: none;
-}
-.genre-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(45, 212, 191, 0.45);
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
-}
-.genre-card-name {
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-.genre-card-sub {
-  font-size: 11.5px;
-  color: var(--text-mute);
-}
-.genre-card-go {
-  margin-top: auto;
-  padding-top: 10px;
-  font-size: 10.5px;
-  color: var(--accent);
-  opacity: 0.85;
-}
-.genre-card.skeleton {
-  border-color: transparent;
-  background: rgba(255, 255, 255, 0.045);
-  animation: relPulse 1.5s ease-in-out infinite;
-  cursor: default;
-}
+/* ============ Назад ============ */
 .back-link {
   display: inline-block;
   margin-bottom: 12px;
@@ -3815,19 +3754,6 @@ img {
 .back-link:hover {
   color: var(--accent);
 }
-.genre-artists {
-  margin-top: 2px;
-}
-.artist-card-letter {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.72);
-}
-
 /* ============ Плейлисты ============ */
 .playlists-page {
   padding-bottom: 34px;
@@ -4144,11 +4070,14 @@ img {
 
 /* ============ Текст песни ============ */
 .text-btn {
-  display: grid;
-  place-items: center;
-  padding: 5px 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: 5px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-mute);
   cursor: pointer;

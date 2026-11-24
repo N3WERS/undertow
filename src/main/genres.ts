@@ -93,13 +93,6 @@ const BUCKETS: Bucket[] = [
 
 const BUCKET_BY_ID = new Map(BUCKETS.map((b) => [b.id, b]))
 
-export interface GenreArtist {
-  name: string
-  weight: number
-  coverUrl?: string
-  artistId?: string
-}
-
 export interface GenreInfo {
   id: string
   name: string
@@ -325,34 +318,6 @@ export function list(): GenreInfo[] {
     .filter((g) => g.artists >= 2)
     .sort((a, b) => b.weight - a.weight)
     .slice(0, 8)
-}
-
-/** Топ артистов жанра из библиотеки — для страницы «Жанры». */
-export function detail(id: string): { genre: GenreInfo | null; artists: GenreArtist[] } {
-  loadFile()
-  const info = list().find((g) => g.id === id) ?? null
-  const lib = snapshot()
-
-  // обложка и id артиста — из любого его трека в библиотеке
-  const meta = new Map<string, { coverUrl?: string; artistId?: string }>()
-  for (const t of [...lib.likes, ...lib.history]) {
-    const name = (t.artists?.[0]?.name ?? t.artist ?? '').split(',')[0].trim()
-    if (!name) continue
-    const k = key(name)
-    const prev = meta.get(k)
-    if (!prev || (!prev.coverUrl && t.coverUrl)) {
-      meta.set(k, { coverUrl: prev?.coverUrl ?? t.coverUrl, artistId: prev?.artistId ?? t.artistId })
-    }
-  }
-
-  const artists = artistWeights()
-    .filter((w) => matches(w.name, id))
-    .slice(0, 24)
-    .map((w) => {
-      const m = meta.get(key(w.name))
-      return { name: w.name, weight: w.score, coverUrl: m?.coverUrl, artistId: m?.artistId }
-    })
-  return { genre: info, artists }
 }
 
 export function nameOf(id: string): string {

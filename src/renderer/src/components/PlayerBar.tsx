@@ -28,6 +28,8 @@ interface Props {
   onToggleQueue: () => void
   lyricsOpen: boolean
   onToggleLyrics: () => void
+  /** слова реально нашлись — иначе кнопку не показываем */
+  hasLyrics: boolean
   /** RMS текущего трека 0…1 — «дыхание» подсветки */
   level?: number
   normalize: boolean
@@ -193,15 +195,16 @@ export default function PlayerBar(p: Props) {
       </div>
 
       <div className="player-right">
-        <button
-          className={`text-btn${p.lyricsOpen ? ' open' : ''}`}
-          onClick={p.onToggleLyrics}
-          title="Текст песни (LRCLIB)"
-          aria-pressed={p.lyricsOpen}
-          disabled={!p.track}
-        >
-          <IconText width={15} height={15} />
-        </button>
+        {p.track && p.hasLyrics ? (
+          <button
+            className={`text-btn${p.lyricsOpen ? ' open' : ''}`}
+            onClick={p.onToggleLyrics}
+            title="Текст песни (LRCLIB)"
+            aria-pressed={p.lyricsOpen}
+          >
+            <IconText width={15} height={15} />
+          </button>
+        ) : null}
         {p.track ? (
           <div className="alt-wrap">
             <button

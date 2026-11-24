@@ -137,6 +137,12 @@ function score(item: LrclibItem, track: Track, title: string, artist: string): n
   return s
 }
 
+/** Есть ли вообще слова: инструментал и пустая выдача — это «нет текста». */
+export async function has(track: Track): Promise<boolean> {
+  const res = await get(track)
+  return Boolean(res && res.lines.length > 0)
+}
+
 export async function get(track: Track): Promise<Lyrics | null> {
   if (!track?.title) return null
   const key = keyOf(track)

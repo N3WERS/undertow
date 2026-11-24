@@ -8,7 +8,6 @@ import LibraryView from './components/LibraryView'
 import QueuePanel from './components/QueuePanel'
 import BrowseView from './components/BrowseView'
 import ReleasesView from './components/ReleasesView'
-import GenresView from './components/GenresView'
 import PlaylistsView from './components/PlaylistsView'
 import PlaylistPicker from './components/PlaylistPicker'
 import LyricsPanel from './components/LyricsPanel'
@@ -41,6 +40,7 @@ export default function App() {
   const [view, setView] = useState<View>('home')
   const [pickerTrack, setPickerTrack] = useState<Track | null>(null)
   const [lyricsOpen, setLyricsOpen] = useState(false)
+  const [hasLyrics, setHasLyrics] = useState(false)
   const [sections, setSections] = useState<Section[]>([])
   const [loading, setLoading] = useState(true)
   const [homeError, setHomeError] = useState<string | null>(null)
@@ -75,6 +75,28 @@ export default function App() {
   const engineRef = useRef<AudioEngine | null>(null)
   const toastRef = useRef<(text: string, kind?: Toast['kind']) => void>(() => undefined)
   const currentId = track?.id ?? null
+
+  // кнопка «текст» появляется только там, где LRCLIB реально что-то отдал
+  useEffect(() => {
+    let alive = true
+    if (!track) {
+      setHasLyrics(false)
+      return
+    }
+    setHasLyrics(false)
+    void window.undertow
+      .lyricsHas(track)
+      .then((yes) => {
+        if (!alive) return
+        setHasLyrics(yes)
+        if (!yes) setLyricsOpen(false)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track?.id])
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = ++toastSeq
@@ -880,10 +902,6 @@ export default function App() {
             />
           )}
 
-          {!browse && view === 'genres' && (
-            <GenresView onStartGenre={(id) => void startFlow(id)} onOpenArtist={openArtist} />
-          )}
-
           {!browse && view === 'search' && (
             <SearchView
               currentId={currentId}
@@ -1003,6 +1021,7 @@ export default function App() {
         onToggleQueue={() => setQueueOpen((v) => !v)}
         lyricsOpen={lyricsOpen}
         onToggleLyrics={() => setLyricsOpen((v) => !v)}
+        hasLyrics={hasLyrics}
       />
 
       {lyricsOpen && (

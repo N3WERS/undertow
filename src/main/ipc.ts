@@ -34,9 +34,9 @@ export function registerIpc(): void {
 
   ipcMain.handle('flow:start', async (_e, genre?: string) => providers.flowStart(genre))
   ipcMain.handle('flow:genres', async () => providers.flowGenres())
-  ipcMain.handle('genres:detail', async (_e, id: string) => providers.genreDetail(id))
 
   ipcMain.handle('lyrics:get', async (_e, track: Track) => providers.lyricsOf(track))
+  ipcMain.handle('lyrics:has', async (_e, track: Track) => providers.lyricsHas(track))
 
   ipcMain.handle('playlists:list', async () => providers.playlistList())
   ipcMain.handle('playlists:get', async (_e, id: string) => providers.playlistGet(id))

@@ -210,12 +210,6 @@ export async function flowGenres(): Promise<{ items: genres.GenreInfo[]; genre?:
   return { items: genres.list(), genre: recPrefs.flowGenre() }
 }
 
-/** Страница жанра: шапка и топ артистов из библиотеки. */
-export async function genreDetail(id: string): Promise<ReturnType<typeof genres.detail>> {
-  await genres.ensure().catch(() => undefined)
-  return genres.detail(String(id))
-}
-
 export function flowMore(): Promise<Track[]> {
   return flow.more()
 }
@@ -484,6 +478,10 @@ export async function searchAll(query: string): Promise<SearchAll> {
 
 export async function lyricsOf(track: Track): Promise<lyrics.Lyrics | null> {
   return lyrics.get(track)
+}
+
+export async function lyricsHas(track: Track): Promise<boolean> {
+  return lyrics.has(track)
 }
 
 /* -------------------------------- плейлисты ------------------------------- */
