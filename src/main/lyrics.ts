@@ -7,6 +7,7 @@
  *     названия/артиста и близости длительности.
  * Тексты без таймингов тоже отдаём — показываем как обычный текст.
  */
+import { app } from 'electron'
 import type { Track } from './providers/types'
 
 export interface LyricLine {
@@ -33,7 +34,7 @@ interface LrclibItem {
   syncedLyrics?: string | null
 }
 
-const UA = 'Undertow/0.1.0 (personal desktop music player)'
+const UA = `Undertow/${app.getVersion()} (personal desktop music player)`
 const BASE = 'https://lrclib.net/api'
 const TIMEOUT = 9000
 const TTL = 7 * 24 * 60 * 60 * 1000
