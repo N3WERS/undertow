@@ -76,63 +76,6 @@ export default function App() {
   const engineRef = useRef<AudioEngine | null>(null)
   const toastRef = useRef<(text: string, kind?: Toast['kind']) => void>(() => undefined)
   const currentId = track?.id ?? null
-  const glowRef = useRef<HTMLDivElement | null>(null)
-
-  // мягкое свечение, которое плавно догоняет курсор под интерфейсом
-  useEffect(() => {
-    const el = glowRef.current
-    if (!el) return
-    let x = window.innerWidth * 0.42
-    let y = window.innerHeight * 0.44
-    let targetX = x
-    let targetY = y
-    let raf = 0
-
-    const place = (px: number, py: number) => {
-      el.style.transform = `translate3d(${px}px, ${py}px, 0)`
-    }
-    place(x, y)
-
-    const tick = () => {
-      const dx = targetX - x
-      const dy = targetY - y
-      if (Math.abs(dx) < 0.35 && Math.abs(dy) < 0.35) {
-        x = targetX
-        y = targetY
-        place(x, y)
-        raf = 0
-        return
-      }
-      x += dx * 0.13
-      y += dy * 0.13
-      place(x, y)
-      raf = requestAnimationFrame(tick)
-    }
-
-    const move = (e: PointerEvent) => {
-      targetX = e.clientX
-      targetY = e.clientY
-      el.style.opacity = '1'
-      if (!raf) raf = requestAnimationFrame(tick)
-    }
-    const hide = () => {
-      el.style.opacity = '0'
-    }
-    const show = () => {
-      el.style.opacity = '1'
-    }
-
-    window.addEventListener('pointermove', move, { passive: true })
-    document.documentElement.addEventListener('pointerleave', hide)
-    document.documentElement.addEventListener('pointerenter', show)
-    return () => {
-      window.removeEventListener('pointermove', move)
-      document.documentElement.removeEventListener('pointerleave', hide)
-      document.documentElement.removeEventListener('pointerenter', show)
-      if (raf) cancelAnimationFrame(raf)
-    }
-  }, [])
-
   // кнопка «текст» появляется только там, где LRCLIB реально что-то отдал
   useEffect(() => {
     let alive = true
@@ -843,8 +786,12 @@ export default function App() {
         : 'yt-dlp не найден'
 
   return (
-    <div className="app">
-      <div className="cursor-glow" ref={glowRef} aria-hidden="true" />
+    <div className={`app${snap.playing ? ' music-on' : ''}`}>
+      <div className="ambient" aria-hidden="true">
+        <span className="ambient-orb one" />
+        <span className="ambient-orb two" />
+        <span className="ambient-orb three" />
+      </div>
       <header className="titlebar">
         <div className="brand">
           <span className="brand-mark">
