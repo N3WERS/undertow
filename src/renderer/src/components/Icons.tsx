@@ -153,6 +153,14 @@ export const IconQueue = (p: P) => (
   </svg>
 )
 
+export const IconLayers = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3.5 3.5 8 12 12.5 20.5 8z" />
+    <path d="M3.5 12.2 12 16.7l8.5-4.5" />
+    <path d="M3.5 16.2 12 20.7l8.5-4.5" />
+  </svg>
+)
+
 export const IconShuffle = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 6.5h3.2l9.6 11h3.2M4 17.5h3.2l3-3.4M13.6 9.8l3.2-3.3h3.2" />

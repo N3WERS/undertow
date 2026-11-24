@@ -140,8 +140,11 @@ export default function TrackList({
               <span className="track-title-row">
                 <span className="track-title">{t.title}</span>
                 {showSource && (
-                  <span className={`track-src${t.provider === 'yandex' ? ' ym' : ''}`}>
-                    {t.provider === 'yandex' ? 'Я' : 'YT'}
+                  <span
+                    className={`src-pill ${t.provider === 'yandex' ? 'yandex' : 'youtube'}`}
+                    title={t.provider === 'yandex' ? 'Источник: Яндекс.Музыка' : 'Источник: YouTube'}
+                  >
+                    {t.provider === 'yandex' ? 'YM' : 'YT'}
                   </span>
                 )}
               </span>

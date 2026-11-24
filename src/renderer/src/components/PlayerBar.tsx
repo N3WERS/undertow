@@ -3,7 +3,19 @@ import type { Track, TrackVersion } from '../types'
 import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
 import ArtistLine from './ArtistLine'
-import { IconQueue, IconHeart, IconMute, IconNext, IconPause, IconPlus, IconPlay, IconPrev, IconText, IconVolume } from './Icons'
+import {
+  IconHeart,
+  IconLayers,
+  IconMute,
+  IconNext,
+  IconPause,
+  IconPlus,
+  IconPlay,
+  IconPrev,
+  IconQueue,
+  IconText,
+  IconVolume
+} from './Icons'
 
 interface Props {
   track: Track | null
@@ -200,25 +212,32 @@ export default function PlayerBar(p: Props) {
       </div>
 
       <div className="player-right">
-        {p.track && p.hasLyrics ? (
-          <button
-            className={`text-btn${p.lyricsOpen ? ' open' : ''}`}
-            onClick={p.onToggleLyrics}
-            title="Текст песни (LRCLIB)"
-            aria-pressed={p.lyricsOpen}
-          >
-            <IconText width={15} height={15} />
-          </button>
-        ) : null}
-        {p.track ? (
-          <div className="alt-wrap">
+        <div className="player-tools">
+          {p.track && p.hasLyrics ? (
             <button
-              className={`alt-btn${p.versions ? ' open' : ''}`}
-              onClick={p.onVersions}
-              title="Другие версии: ремиксы, каверы, оркестр…"
+              className={`tool-btn${p.lyricsOpen ? ' open' : ''}`}
+              onClick={p.onToggleLyrics}
+              title="Текст песни (LRCLIB)"
+              aria-label="Текст песни"
+              aria-pressed={p.lyricsOpen}
             >
-              другой вариант
+              <IconText width={14} height={14} />
             </button>
+          ) : null}
+          {p.track ? (
+            <div className="alt-wrap">
+              <button
+                className={`tool-btn alt-btn${p.versions ? ' open' : ''}`}
+                onClick={p.onVersions}
+                title="Другие версии: ремиксы, каверы, оркестр…"
+                aria-label="Другие версии"
+                aria-expanded={Boolean(p.versions)}
+              >
+                <IconLayers width={14} height={14} />
+                {p.versions?.list.length ? (
+                  <span className="tool-count">{p.versions.list.length}</span>
+                ) : null}
+              </button>
             {p.versions ? (
               <div className="alt-menu versions-menu">
                 <div className="alt-head">
@@ -293,27 +312,29 @@ export default function PlayerBar(p: Props) {
             ) : null}
           </div>
         ) : null}
-        <button
-          className={`norm-btn${p.normalize ? ' on' : ''}`}
-          onClick={() => p.onNormalize(!p.normalize)}
-          title={
-            p.normalize
-              ? 'HQ: выравнивание громкости включено — нажми, чтобы выключить'
-              : 'HQ: выравнивание громкости выключено — нажми, чтобы включить'
-          }
-          aria-pressed={p.normalize}
-        >
-          HQ
-        </button>
-        <button
-          className={`queue-btn${p.queueOpen ? ' open' : ''}`}
-          onClick={p.onToggleQueue}
-          title="Очередь воспроизведения"
-          aria-pressed={p.queueOpen}
-        >
-          <IconQueue width={15} height={15} />
-          {p.queueCount > 0 ? <span className="queue-btn-count">{p.queueCount}</span> : null}
-        </button>
+          <button
+            className={`tool-btn norm-btn${p.normalize ? ' on' : ''}`}
+            onClick={() => p.onNormalize(!p.normalize)}
+            title={
+              p.normalize
+                ? 'HQ: выравнивание громкости включено — нажми, чтобы выключить'
+                : 'HQ: выравнивание громкости выключено — нажми, чтобы включить'
+            }
+            aria-pressed={p.normalize}
+          >
+            HQ
+          </button>
+          <button
+            className={`tool-btn queue-btn${p.queueOpen ? ' open' : ''}`}
+            onClick={p.onToggleQueue}
+            title="Очередь воспроизведения"
+            aria-pressed={p.queueOpen}
+          >
+            <IconQueue width={15} height={15} />
+            {p.queueCount > 0 ? <span className="queue-btn-count">{p.queueCount}</span> : null}
+          </button>
+        </div>
+        <span className="player-divider" />
         <div className="volume">
           <button className="icon-btn" onClick={() => p.onVolume(p.volume > 0 ? 0 : 0.85)} title="Звук">
             {p.volume > 0 ? <IconVolume /> : <IconMute />}

@@ -1267,22 +1267,6 @@ img {
   gap: 7px;
   min-width: 0;
 }
-.track-src {
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 2px 5px;
-  border-radius: 4px;
-  color: var(--text-mute);
-  border: 1px solid var(--line-strong);
-  line-height: 1.3;
-}
-.track-src.ym {
-  color: #ffd166;
-  border-color: rgba(255, 209, 102, 0.28);
-}
-
 /* -------------------------------- поиск ---------------------------------- */
 
 .search-field {
@@ -4348,4 +4332,69 @@ img {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ------------------------- инструменты нижнего меню ----------------------- */
+/* единая капсула для текста, версий, HQ и очереди: одинаковые кнопки,
+   без пёстрых рамок и подписей, которые спорили с транспортом */
+.player-tools {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.tool-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-mute);
+  font: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.tool-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.tool-btn.open,
+.tool-btn[aria-pressed='true'],
+.tool-btn.on {
+  color: var(--accent);
+  background: rgba(45, 212, 191, 0.12);
+}
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tool-count {
+  font-size: 8.5px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+.player-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--line-strong);
+  flex: none;
+}
+.player-right .queue-btn-count {
+  top: -4px;
+  right: -4px;
 }
