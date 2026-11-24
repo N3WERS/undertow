@@ -207,6 +207,8 @@ export interface YmAlbumRef {
   title: string
   year?: string
   coverUrl?: string
+  /** «сингл», «EP», «альбом» — из подписи карточки YouTube Music */
+  type?: 'single' | 'ep' | 'album'
 }
 
 /** Всё, что нужно для страницы артиста и для радио. */
@@ -322,7 +324,15 @@ function albumRefOf(item: ParserItem): YmAlbumRef | null {
   if (!id.startsWith('MPREb')) return null
   const title = text(item.title) || text(item.name)
   if (!title) return null
-  return { id, title, year: text(item.year) || undefined, coverUrl: bigCover(coverOf(item)) }
+  const sub = text(item.subtitle).toLowerCase()
+  const type = /singl|сингл/.test(sub)
+    ? 'single'
+    : /ep|мини-альбом/.test(sub)
+      ? 'ep'
+      : /album|альбом/.test(sub)
+        ? 'album'
+        : undefined
+  return { id, title, year: text(item.year) || undefined, coverUrl: bigCover(coverOf(item)), type }
 }
 
 function artistRefOf(item: ParserItem): YmArtistRef | null {

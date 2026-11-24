@@ -7,9 +7,10 @@ import Settings from './components/Settings'
 import LibraryView from './components/LibraryView'
 import QueuePanel from './components/QueuePanel'
 import BrowseView from './components/BrowseView'
+import ReleasesView from './components/ReleasesView'
 import PlayerBar from './components/PlayerBar'
 import { AudioEngine, type Snapshot } from './audio/engine'
-import type { BrowsePage, LibrarySnapshot, ProviderState, Section, Track, TrackVersion } from './types'
+import type { BrowsePage, LibrarySnapshot, ProviderState, ReleaseItem, Section, Track, TrackVersion } from './types'
 import { APP_VERSION } from './version'
 
 // лента и поиск не должны перерисовываться 10 раз в секунду из-за прогресса плеера
@@ -449,6 +450,12 @@ export default function App() {
   const flowRef = useRef(false)
   const flowBusy = useRef(false)
   const [flowActive, setFlowActive] = useState(false)
+  const [releases, setReleases] = useState<{
+    loading: boolean
+    items: ReleaseItem[]
+    updatedAt: number
+    artists: number
+  } | null>(null)
   const [flowLoading, setFlowLoading] = useState(false)
 
   const refillFlow = useCallback((len: number, index: number) => {
@@ -485,6 +492,54 @@ export default function App() {
     setFlowActive(false)
     void engineRef.current?.setQueue(playable, at >= 0 ? at : 0)
   }, [])
+
+  const loadReleases = useCallback(
+    async (force = false) => {
+      setReleases((prev) => ({
+        loading: true,
+        items: prev?.items ?? [],
+        updatedAt: prev?.updatedAt ?? 0,
+        artists: prev?.artists ?? 0
+      }))
+      try {
+        const res = await window.undertow.releases(force)
+        setReleases({ loading: false, ...res })
+      } catch (e) {
+        setReleases((prev) => (prev ? { ...prev, loading: false } : null))
+        toast(`Не получил новинки: ${(e as Error).message}`, 'error')
+      }
+    },
+    [toast]
+  )
+
+  useEffect(() => {
+    if (view === 'releases' && !releases) void loadReleases()
+  }, [view, releases, loadReleases])
+
+  const openReleaseAlbum = useCallback(
+    (rel: ReleaseItem) => openAlbum({ id: rel.albumId ? `yt-album:${rel.albumId}` : undefined, title: rel.title, artist: rel.artist }),
+    [openAlbum]
+  )
+
+  const playRelease = useCallback(
+    async (rel: ReleaseItem) => {
+      try {
+        const page = await window.undertow.albumPage({
+          id: rel.albumId ? `yt-album:${rel.albumId}` : undefined,
+          title: rel.title,
+          artist: rel.artist
+        })
+        if (!page.tracks.length) {
+          toast('В этом релизе нет доступных треков', 'error')
+          return
+        }
+        playTrack(page.tracks[0], page.tracks)
+      } catch (e) {
+        toast(`Не открылся релиз: ${(e as Error).message}`, 'error')
+      }
+    },
+    [playTrack, toast]
+  )
 
   const startFlow = useCallback(async () => {
     setFlowLoading(true)
@@ -752,6 +807,16 @@ export default function App() {
               onRestoreHidden={() => void restoreHidden()}
               onOpenArtist={openArtist}
               onOpenAlbum={openAlbum}
+            />
+          )}
+
+          {!browse && view === 'releases' && (
+            <ReleasesView
+              data={releases}
+              onRefresh={() => void loadReleases(true)}
+              onOpenAlbum={openReleaseAlbum}
+              onArtist={(rel) => openArtist({ id: rel.artistId, name: rel.artist })}
+              onPlay={(rel) => void playRelease(rel)}
             />
           )}
 

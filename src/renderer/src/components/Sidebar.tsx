@@ -1,7 +1,7 @@
-import { IconHome, IconLibrary, IconSearch, IconSettings, IconWave } from './Icons'
+import { IconHome, IconLibrary, IconSearch, IconSettings, IconSpark, IconWave } from './Icons'
 import type { ProviderState } from '../types'
 
-export type View = 'home' | 'flow' | 'search' | 'library' | 'settings'
+export type View = 'home' | 'releases' | 'flow' | 'search' | 'library' | 'settings'
 
 interface Props {
   view: View
@@ -13,6 +13,7 @@ export default function Sidebar({ view, onChange, state }: Props) {
   const yn = state?.yandex
   const items: { id: View; label: string; icon: typeof IconHome }[] = [
     { id: 'home', label: 'Главная', icon: IconHome },
+    { id: 'releases', label: 'Новинки', icon: IconSpark },
     { id: 'flow', label: 'Течение', icon: IconWave },
     { id: 'search', label: 'Поиск', icon: IconSearch },
     { id: 'library', label: 'Библиотека', icon: IconLibrary },

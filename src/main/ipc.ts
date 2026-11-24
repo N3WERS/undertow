@@ -4,6 +4,7 @@ import * as providers from './providers'
 import type { Track } from './providers/types'
 import * as queueStore from './queueStore'
 import * as versions from './versions'
+import * as releases from './releases'
 
 export function registerIpc(): void {
   ipcMain.handle('home', async () => providers.home())
@@ -66,6 +67,7 @@ export function registerIpc(): void {
     providers.pickFallback(track, candidate as never)
   )
   ipcMain.handle('fallback:unpin', async (_e, track: Track) => providers.restoreOriginal(track))
+  ipcMain.handle('releases:list', async (_e, force?: boolean) => releases.list(Boolean(force)))
   ipcMain.handle('versions:list', async (_e, track: Track) => versions.listVersions(track))
   ipcMain.handle('prewarm', async (_e, track: Track) => providers.prewarm(track))
   ipcMain.handle('yandex:set', async (_e, token: string) => providers.saveYandexToken(String(token ?? '')))

@@ -33,6 +33,13 @@ export const IconWave = (p: P) => (
   </svg>
 )
 
+export const IconRefresh = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M20 12a8 8 0 1 1-2.6-5.9" />
+    <path d="M20 4v4.5h-4.5" />
+  </svg>
+)
+
 export const IconLibrary = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 5v14M8.5 4v16M13 6.5v13M17.5 9v8.5M21 11v5" />

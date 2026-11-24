@@ -103,6 +103,24 @@ export interface TrackVersion {
   label: string
 }
 
+export interface ReleaseItem {
+  id: string
+  title: string
+  artist: string
+  artistId?: string
+  /** id альбома YouTube Music (MPREb…) */
+  albumId?: string
+  date?: string
+  year?: string
+  type: 'single' | 'ep' | 'album'
+  coverUrl?: string
+  trackCount?: number
+  plays?: number
+  playsSource?: string
+  dateSource?: string
+  source: 'itunes' | 'youtube'
+}
+
 export interface ImportResult {
   imported: number
   total: number
@@ -134,6 +152,7 @@ export interface UndertowApi {
   clearHistory(): Promise<void>
   importYandexLikes(): Promise<ImportResult>
   versions(track: Track): Promise<TrackVersion[]>
+  releases(force?: boolean): Promise<{ items: ReleaseItem[]; updatedAt: number; artists: number }>
   fallbackList(track: Track): Promise<{ pinned: boolean; items: FallbackCandidate[] }>
   fallbackUnpin(track: Track): Promise<void>
   fallbackPick(track: Track, candidate: FallbackCandidate): Promise<void>

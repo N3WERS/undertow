@@ -33,6 +33,7 @@ const api = {
   fallbackPick: (track: unknown, candidate: unknown) => ipcRenderer.invoke('fallback:pick', track, candidate),
   fallbackUnpin: (track: unknown) => ipcRenderer.invoke('fallback:unpin', track),
   versions: (track: unknown) => ipcRenderer.invoke('versions:list', track),
+  releases: (force?: boolean) => ipcRenderer.invoke('releases:list', force),
   prewarm: (track: unknown) => ipcRenderer.invoke('prewarm', track),
   state: () => ipcRenderer.invoke('state'),
   setYandexToken: (token: string) => ipcRenderer.invoke('yandex:set', token),

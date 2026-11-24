@@ -80,6 +80,8 @@ export interface YtdlpEntry {
   duration: number | null
   thumbnail: string | null
   isLive: boolean
+  /** просмотры из выдачи поиска — для страницы «Новинки» */
+  views: number | null
 }
 
 /** Быстрый поиск: --flat-playlist не тянет форматы, ~2.4 с на 24 результата. */
@@ -95,7 +97,8 @@ export async function ytSearch(query: string, limit = 24): Promise<YtdlpEntry[]>
       uploader: String(e.uploader ?? e.channel ?? ''),
       duration: typeof e.duration === 'number' ? e.duration : null,
       thumbnail: best?.url ?? null,
-      isLive: e.live_status === 'is_live'
+      isLive: e.live_status === 'is_live',
+      views: typeof e.view_count === 'number' ? e.view_count : null
     }
   })
 }
