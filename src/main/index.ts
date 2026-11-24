@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { startAudioProxy } from './audioProxy'
 import { registerIpc } from './ipc'
+import * as providers from './providers'
 
 const BG = '#070a0e'
 
@@ -61,6 +62,15 @@ app.whenReady().then(async () => {
   await startAudioProxy()
   registerIpc()
   createWindow()
+
+  // Старые записи истории сохранились без длительности — подтягиваем её
+  // в фоне, чтобы не задерживать запуск. Рендерер по событию перечитает
+  // главную и библиотеку.
+  setTimeout(() => {
+    void providers.backfillDurations().then((n) => {
+      if (n > 0 && win && !win.isDestroyed()) win.webContents.send('library:durations', n)
+    })
+  }, 2500)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

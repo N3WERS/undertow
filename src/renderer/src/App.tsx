@@ -220,6 +220,16 @@ export default function App() {
     }
   }, [])
 
+  // main дозаполнил длительности старых треков — перечитываем главную и
+  // библиотеку, иначе в «Продолжить слушать» так и висело бы «—»
+  useEffect(() => {
+    const off = window.undertow.onDurations?.(() => {
+      void loadHome()
+      void reloadLibrary()
+    })
+    return off
+  }, [loadHome, reloadLibrary])
+
   useEffect(() => {
     void loadHome()
     void reloadLibrary()

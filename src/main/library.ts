@@ -198,6 +198,7 @@ export function clearHistory(): void {
 /* ------------------------------- снимок ---------------------------------- */
 
 export interface TrackPatch {
+  durationSec?: number | null
   artistId?: string
   artists?: { id?: string; name: string }[]
   album?: string

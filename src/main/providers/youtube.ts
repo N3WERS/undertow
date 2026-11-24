@@ -57,13 +57,29 @@ function image(node: unknown, depth = 0): string | undefined {
   return undefined
 }
 
-function parseDuration(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  const s = text(v) || (v && typeof v === 'object' ? String((v as { seconds?: number }).seconds ?? '') : '')
-  if (!s) return null
+function parseClock(s: string): number | null {
+  if (!s.includes(':')) return null
   const parts = s.split(':').map((p) => Number(p.replace(/\D/g, '')))
   if (parts.some((n) => !Number.isFinite(n))) return null
   return parts.reduce((acc, n) => acc * 60 + n, 0) || null
+}
+
+/**
+ * Длительность приходит в разных видах: у строк поиска это «3:45», у
+ * MusicResponsiveListItem — объект `{ text: '3:45', seconds: 225 }`.
+ * Раньше объект превращался в строку «[object Object]», и все длительности
+ * на страницах артиста/альбома оставались пустыми.
+ */
+function parseDuration(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? v : null
+  if (v && typeof v === 'object') {
+    const sec = (v as { seconds?: unknown }).seconds
+    if (typeof sec === 'number' && Number.isFinite(sec) && sec > 0) return Math.round(sec)
+    const t = (v as { text?: unknown }).text
+    return typeof t === 'string' ? parseClock(t) : null
+  }
+  if (typeof v === 'string') return parseClock(v)
+  return null
 }
 
 const PLAYABLE = new Set(['song', 'video'])
@@ -646,6 +662,31 @@ export async function albumYear(title: string, artist?: string): Promise<string 
     yearCache.set(key, null)
     return null
   }
+}
+
+/**
+ * Длительности по videoId: один InnerTube player-запрос на трек, восемь
+ * параллельно (~0.15 с на запрос). Нужно, чтобы дозаполнить старые записи
+ * истории, сохранённые до починки parseDuration.
+ */
+export async function durations(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (!ids.length) return out
+  const yt = await client()
+  for (let i = 0; i < ids.length; i += 8) {
+    await Promise.all(
+      ids.slice(i, i + 8).map(async (id) => {
+        try {
+          const info = await yt.getBasicInfo(id)
+          const sec = info.basic_info?.duration
+          if (typeof sec === 'number' && Number.isFinite(sec) && sec > 0) out.set(id, Math.round(sec))
+        } catch {
+          /* приватное или удалённое видео — оставляем как есть */
+        }
+      })
+    )
+  }
+  return out
 }
 
 /** Проставляет год трекам, у которых есть название альбома (до `maxAlbums` запросов). */

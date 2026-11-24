@@ -386,6 +386,42 @@ export async function enrichLibrary(): Promise<LibrarySnapshot> {
   return library.snapshot()
 }
 
+/**
+ * Дозаполняет длительности старых записей: до починки parseDuration треки
+ * YouTube сохранялись в историю без durationSec, и в списках было «—».
+ * Батчами по 40, максимум 240 треков за запуск; при изменении сбрасываем
+ * кэш главной, чтобы подписи обновились и там.
+ */
+export async function backfillDurations(limit = 240): Promise<number> {
+  const snap = library.snapshot()
+  const missing: string[] = []
+  const seen = new Set<string>()
+  for (const t of [...snap.history, ...snap.likes]) {
+    if (t.provider !== 'youtube') continue
+    if (t.durationSec && t.durationSec > 0) continue
+    const vid = t.id.replace(/^yt:/, '')
+    if (!/^[\w-]{11}$/.test(vid) || seen.has(vid)) continue
+    seen.add(vid)
+    missing.push(vid)
+    if (missing.length >= limit) break
+  }
+  if (!missing.length) return 0
+
+  let changed = 0
+  for (let i = 0; i < missing.length; i += 40) {
+    const found = await youtube.durations(missing.slice(i, i + 40)).catch(() => new Map<string, number>())
+    if (!found.size) continue
+    const patches = new Map<string, library.TrackPatch>()
+    for (const [vid, sec] of found) patches.set(`yt:${vid}`, { durationSec: sec })
+    changed += library.patchTracks(patches)
+  }
+  if (changed) {
+    console.log('[library] дозаполнены длительности:', changed)
+    recommend.invalidate()
+  }
+  return changed
+}
+
 /* ---------------------------- обратная связь ----------------------------- */
 
 export function hideSection(sectionId: string): string[] {

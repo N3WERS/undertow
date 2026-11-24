@@ -38,7 +38,13 @@ const api = {
   state: () => ipcRenderer.invoke('state'),
   setYandexToken: (token: string) => ipcRenderer.invoke('yandex:set', token),
   clearYandexToken: () => ipcRenderer.invoke('yandex:clear'),
-  refreshYandex: () => ipcRenderer.invoke('yandex:refresh')
+  refreshYandex: () => ipcRenderer.invoke('yandex:refresh'),
+  /** main дозаполнил длительности старых треков — пора перечитать списки */
+  onDurations: (cb: (count: number) => void) => {
+    const handler = (_e: unknown, count: number) => cb(count)
+    ipcRenderer.on('library:durations', handler)
+    return () => ipcRenderer.removeListener('library:durations', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('undertow', api)

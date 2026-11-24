@@ -163,6 +163,7 @@ export interface UndertowApi {
   setYandexToken(token: string): Promise<ProviderState>
   clearYandexToken(): Promise<ProviderState>
   refreshYandex(): Promise<ProviderState>
+  onDurations(cb: (count: number) => void): () => void
 }
 
 declare global {
