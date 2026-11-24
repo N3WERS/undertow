@@ -139,6 +139,50 @@ function takeFromPending(session: Session, limit: number): Track[] {
   return out
 }
 
+/* ------------------------- радио от конкретного трека -------------------- */
+
+/**
+ * «Похожее» на трек. Сначала спрашиваем точечные похожие треки у источника
+ * (Яндекс `/tracks/{id}/similar`, YouTube Music «Up next»), а если их мало —
+ * добиваем радио артиста, чтобы очередь не оказалась из трёх песен.
+ */
+export async function similar(
+  token: string | null,
+  track: Track
+): Promise<{ title: string; tracks: Track[] }> {
+  const out: Track[] = []
+  const seen = new Set<string>([track.id])
+  const add = (list: Track[]): void => {
+    for (const t of list) {
+      if (!t?.playable || seen.has(t.id)) continue
+      seen.add(t.id)
+      out.push(t)
+    }
+  }
+
+  if (track.provider === 'yandex' && token) {
+    const numeric = track.id.replace(/^ym:/, '')
+    add(await yandex.similarTracks(token, numeric, 30).catch(() => [] as Track[]))
+  } else if (track.id.startsWith('yt:')) {
+    add(await youtube.relatedTracks(track.id.slice(3), 45).catch(() => [] as Track[]))
+  }
+
+  if (out.length < 18) {
+    const ref = { id: track.artistId, name: track.artist }
+    try {
+      const artistRadio =
+        track.provider === 'yandex' && token && track.artistId
+          ? await start(token, track.artistId)
+          : await startLocal(ref)
+      add(artistRadio.tracks.slice(0, 40))
+    } catch {
+      /* без радио артиста останутся только точечные похожие */
+    }
+  }
+
+  return { title: `Похожее на «${track.title}»`, tracks: out.slice(0, 60) }
+}
+
 /* --------------------------------- Яндекс -------------------------------- */
 
 export async function start(token: string, artistId: string): Promise<{ title: string; tracks: Track[] }> {

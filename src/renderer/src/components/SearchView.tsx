@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Track } from '../types'
+import type { AlbumRef, ArtistRef, Track } from '../types'
 import TrackList from './TrackList'
-import { IconSearch } from './Icons'
+import { IconPlay, IconSearch } from './Icons'
 
 interface Props {
   currentId: string | null
@@ -13,10 +13,14 @@ interface Props {
   onHover?: (track: Track) => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
+  onAddToPlaylist?: (track: Track) => void
+  onSimilar?: (track: Track) => void
   onAddToQueue?: (track: Track) => void
 }
 
 const SUGGESTIONS = ['Molchat Doma', 'Tame Impala', 'новинки 2026', 'phonk', 'Radiohead', 'Кино']
+
+const TYPE_LABEL: Record<string, string> = { single: 'сингл', ep: 'EP', album: 'альбом' }
 
 export default function SearchView({
   currentId,
@@ -28,14 +32,19 @@ export default function SearchView({
   onHover,
   onAddToQueue,
   onOpenArtist,
-  onOpenAlbum
+  onOpenAlbum,
+  onAddToPlaylist,
+  onSimilar
 }: Props) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Track[]>([])
+  const [tracks, setTracks] = useState<Track[]>([])
+  const [albums, setAlbums] = useState<AlbumRef[]>([])
+  const [artists, setArtists] = useState<ArtistRef[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const lastQuery = useRef('')
+  const [asked, setAsked] = useState(false)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -46,25 +55,34 @@ export default function SearchView({
     if (!term || busy) return
     setBusy(true)
     setError(null)
+    setAsked(true)
     lastQuery.current = term
     try {
-      const found = await window.undertow.search(term)
-      setResults(found)
-      if (!found.length) setError('Ничего не нашлось — попробуй сформулировать иначе.')
+      const found = await window.undertow.searchAll(term)
+      setTracks(found.tracks)
+      setAlbums(found.albums)
+      setArtists(found.artists)
+      if (!found.tracks.length && !found.albums.length && !found.artists.length) {
+        setError('Ничего не нашлось — попробуй сформулировать иначе.')
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setResults([])
+      setTracks([])
+      setAlbums([])
+      setArtists([])
     } finally {
       setBusy(false)
     }
   }
 
+  const empty = !tracks.length && !albums.length && !artists.length
+
   return (
-    <div className="scroll">
+    <div className="scroll search-page">
       <div className="page-head">
         <div>
           <h1>Поиск</h1>
-          <p>Ищет по всему YouTube — включая то, чего нет в подписках</p>
+          <p>YouTube Music и Яндекс: треки, альбомы и исполнители</p>
         </div>
         {busy && <span className="spinner" />}
       </div>
@@ -89,7 +107,7 @@ export default function SearchView({
         </label>
       </form>
 
-      {!results.length && !busy && !error && (
+      {!asked && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {SUGGESTIONS.map((s) => (
             <button
@@ -114,14 +132,69 @@ export default function SearchView({
         </div>
       )}
 
-      {results.length > 0 && (
+      {!error && artists.length > 0 && (
+        <section className="section fade-up search-artists">
+          <div className="section-head">
+            <h2>Исполнители</h2>
+            <span className="count">{artists.length}</span>
+          </div>
+          <div className="search-artist-row">
+            {artists.map((a) => (
+              <button
+                key={a.id}
+                className="search-artist-card"
+                onClick={() => onOpenArtist?.({ id: a.id, name: a.name })}
+                title={`Открыть ${a.name}`}
+              >
+                <span className="search-artist-avatar">
+                  {a.coverUrl ? <img src={a.coverUrl} alt="" loading="lazy" /> : <i>{a.name.slice(0, 1)}</i>}
+                </span>
+                <span className="search-artist-name">{a.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!error && albums.length > 0 && (
+        <section className="section fade-up search-albums">
+          <div className="section-head">
+            <h2>Альбомы и синглы</h2>
+            <span className="count">{albums.length}</span>
+          </div>
+          <div className="search-album-grid">
+            {albums.map((a) => (
+              <button
+                key={a.id}
+                className="search-album-card"
+                onClick={() =>
+                  onOpenAlbum?.({ id: `yt-album:${a.id}`, title: a.title, artist: undefined })
+                }
+              >
+                <span className="search-album-cover">
+                  {a.coverUrl ? <img src={a.coverUrl} alt="" loading="lazy" /> : <i>♪</i>}
+                  <span className="search-album-play">
+                    <IconPlay width={14} height={14} />
+                  </span>
+                </span>
+                <span className="search-album-title">{a.title}</span>
+                <span className="search-album-sub">
+                  {[TYPE_LABEL[a.type ?? ''] ?? null, a.year].filter(Boolean).join(' · ') || 'альбом'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!error && tracks.length > 0 && (
         <section className="section fade-up">
           <div className="section-head">
-            <h2>{lastQuery.current}</h2>
-            <span className="count">{results.length} треков</span>
+            <h2>Треки</h2>
+            <span className="count">{tracks.length}</span>
           </div>
           <TrackList
-            tracks={results}
+            tracks={tracks}
             currentId={currentId}
             playing={playing}
             onPlay={onPlay}
@@ -133,7 +206,9 @@ export default function SearchView({
             onAddToQueue={onAddToQueue}
             onOpenArtist={onOpenArtist}
             onOpenAlbum={onOpenAlbum}
-            showSource={new Set(results.map((r) => r.provider)).size > 1}
+            onAddToPlaylist={onAddToPlaylist}
+            onSimilar={onSimilar}
+            showSource={new Set(tracks.map((r) => r.provider)).size > 1}
           />
         </section>
       )}

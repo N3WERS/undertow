@@ -103,6 +103,51 @@ export interface TrackVersion {
   label: string
 }
 
+export interface AlbumRef {
+  id: string
+  title: string
+  year?: string
+  coverUrl?: string
+  type?: 'single' | 'ep' | 'album'
+}
+
+export interface ArtistRef {
+  id: string
+  name: string
+  coverUrl?: string
+}
+
+export interface SearchAll {
+  tracks: Track[]
+  albums: AlbumRef[]
+  artists: ArtistRef[]
+}
+
+export interface LyricLine {
+  t: number
+  text: string
+}
+
+export interface Lyrics {
+  synced: boolean
+  lines: LyricLine[]
+  instrumental: boolean
+  source: string
+}
+
+export interface PlaylistSummary {
+  id: string
+  title: string
+  count: number
+  coverUrl?: string
+  updatedAt: number
+}
+
+export interface Playlist extends PlaylistSummary {
+  tracks: Track[]
+  createdAt: number
+}
+
 export interface ReleaseItem {
   id: string
   title: string
@@ -149,6 +194,21 @@ export interface UndertowApi {
     items: { id: string; name: string; artists: number; weight: number }[]
     genre?: string
   }>
+  genreDetail(id: string): Promise<{
+    genre: { id: string; name: string; artists: number; weight: number } | null
+    artists: { name: string; weight: number; coverUrl?: string; artistId?: string }[]
+  }>
+  lyrics(track: Track): Promise<Lyrics | null>
+  playlists(): Promise<PlaylistSummary[]>
+  playlist(id: string): Promise<Playlist | null>
+  playlistCreate(title: string): Promise<Playlist>
+  playlistRename(id: string, title: string): Promise<Playlist | null>
+  playlistRemove(id: string): Promise<boolean>
+  playlistAdd(id: string, tracks: Track[]): Promise<number>
+  playlistRemoveTrack(id: string, trackId: string): Promise<Playlist | null>
+  playlistReorder(id: string, from: number, to: number): Promise<Playlist | null>
+  playlistsImport(): Promise<{ created: number; skipped: number; titles: string[] }>
+  playlistsExport(): Promise<string | null>
   flowMore(): Promise<Track[]>
   flowInfo(): Promise<{
     active: boolean
@@ -158,6 +218,7 @@ export interface UndertowApi {
   flowSeeds(): Promise<{ name: string; weight: number }[]>
   artistRadio(ref: { id?: string; name?: string }): Promise<{ title: string; tracks: Track[] }>
   radioMore(ref: { id?: string; name?: string }): Promise<Track[]>
+  radioTrack(track: Track): Promise<{ title: string; tracks: Track[] }>
   library(): Promise<LibrarySnapshot>
   like(track: Track, liked: boolean): Promise<LikeResult>
   addHistory(track: Track): Promise<void>
@@ -170,6 +231,7 @@ export interface UndertowApi {
   fallbackPick(track: Track, candidate: FallbackCandidate): Promise<void>
   prewarm(track: Track): Promise<void>
   search(query: string): Promise<Track[]>
+  searchAll(query: string): Promise<SearchAll>
   resolve(trackId: string, fresh?: boolean, meta?: Track): Promise<ResolvedStream>
   state(): Promise<ProviderState>
   setYandexToken(token: string): Promise<ProviderState>

@@ -577,6 +577,60 @@ export async function artistGenres(token: string, artistId: string): Promise<str
   return Array.isArray(genres) ? genres.filter((g): g is string => typeof g === 'string') : []
 }
 
+/* -------------------------------- плейлисты ------------------------------- */
+
+export interface YmPlaylistInfo {
+  kind: number
+  title: string
+  trackCount: number
+  ownerUid?: number
+}
+
+/**
+ * Похожие треки: `/tracks/{id}/similar` — до 30 штук, уже отобранных Яндексом.
+ * Для треков вне Яндекса не используется.
+ */
+export async function similarTracks(token: string, trackId: string, limit = 30): Promise<Track[]> {
+  if (!/^\d+$/.test(trackId)) return []
+  const data = await call<{ result?: { similarTracks?: YmTrack[] } }>(
+    `/tracks/${trackId}/similar`,
+    token,
+    20000
+  )
+  return (data.result?.similarTracks ?? [])
+    .map(mapTrack)
+    .filter((t): t is Track => t !== null && t.playable)
+    .slice(0, limit)
+}
+
+/** Свои плейлисты пользователя (`/users/{uid}/playlists/list`). */
+export async function userPlaylists(token: string, uid: number): Promise<YmPlaylistInfo[]> {
+  const data = await call<{ result?: unknown[] }>(`/users/${uid}/playlists/list`, token, 15000)
+  const list = Array.isArray(data.result) ? data.result : []
+  return list
+    .map((raw) => raw as { kind?: unknown; title?: unknown; trackCount?: unknown; owner?: { uid?: unknown } })
+    .filter((p) => typeof p.kind === 'number' && typeof p.title === 'string')
+    .map((p) => ({
+      kind: p.kind as number,
+      title: String(p.title),
+      trackCount: typeof p.trackCount === 'number' ? p.trackCount : 0,
+      ownerUid: typeof p.owner?.uid === 'number' ? (p.owner.uid as number) : uid
+    }))
+}
+
+/** Треки плейлиста: `rich-tracks=true` отдаёт сразу с артистами и обложками. */
+export async function playlistTracks(token: string, uid: number, kind: number): Promise<Track[]> {
+  const data = await call<{ result?: { tracks?: (YmTrack & { track?: YmTrack })[] } }>(
+    `/users/${uid}/playlists/${kind}?rich-tracks=true`,
+    token,
+    20000
+  )
+  // rich-tracks кладёт трек внутрь обёртки {id, timestamp, track: {...}}
+  return (data.result?.tracks ?? [])
+    .map((row) => mapTrack(row.track ?? row))
+    .filter((t): t is Track => t !== null)
+}
+
 /* ------------------------- страницы артиста/альбома ----------------------- */
 
 interface YmArtistInfo {

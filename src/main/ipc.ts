@@ -1,4 +1,6 @@
-import { ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import fs from 'node:fs'
+import path from 'node:path'
 import { proxify } from './audioProxy'
 import * as providers from './providers'
 import type { Track } from './providers/types'
@@ -11,6 +13,7 @@ export function registerIpc(): void {
   // пересобрать личные подборки, минуя кэш
   ipcMain.handle('home:refresh', async () => providers.home(true))
   ipcMain.handle('search', async (_e, query: string) => providers.search(String(query ?? '')))
+  ipcMain.handle('search:all', async (_e, query: string) => providers.searchAll(String(query ?? '')))
   ipcMain.handle('resolve', async (_e, id: string, fresh: boolean, meta?: Track) => {
     const stream = await providers.resolveStream(String(id), Boolean(fresh), meta)
     // через локальный прокси: он добавляет CORS, без которого Web Audio молчит
@@ -31,6 +34,39 @@ export function registerIpc(): void {
 
   ipcMain.handle('flow:start', async (_e, genre?: string) => providers.flowStart(genre))
   ipcMain.handle('flow:genres', async () => providers.flowGenres())
+  ipcMain.handle('genres:detail', async (_e, id: string) => providers.genreDetail(id))
+
+  ipcMain.handle('lyrics:get', async (_e, track: Track) => providers.lyricsOf(track))
+
+  ipcMain.handle('playlists:list', async () => providers.playlistList())
+  ipcMain.handle('playlists:get', async (_e, id: string) => providers.playlistGet(id))
+  ipcMain.handle('playlists:create', async (_e, title: string) => providers.playlistCreate(title))
+  ipcMain.handle('playlists:rename', async (_e, id: string, title: string) =>
+    providers.playlistRename(id, title)
+  )
+  ipcMain.handle('playlists:remove', async (_e, id: string) => providers.playlistRemove(id))
+  ipcMain.handle('playlists:add', async (_e, id: string, tracks: Track[]) =>
+    providers.playlistAdd(id, tracks)
+  )
+  ipcMain.handle('playlists:remove-track', async (_e, id: string, trackId: string) =>
+    providers.playlistRemoveTrack(id, trackId)
+  )
+  ipcMain.handle('playlists:reorder', async (_e, id: string, from: number, to: number) =>
+    providers.playlistReorder(id, from, to)
+  )
+  ipcMain.handle('playlists:import', async () => providers.importYandexPlaylists())
+  ipcMain.handle('playlists:export', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const res = await dialog.showSaveDialog(win ?? undefined!, {
+      title: 'Экспорт плейлистов',
+      defaultPath: path.join(app.getPath('documents'), `undertow-playlists-${stamp}.json`),
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (res.canceled || !res.filePath) return null
+    fs.writeFileSync(res.filePath, providers.playlistExport(), 'utf8')
+    return res.filePath
+  })
   ipcMain.handle('flow:more', async () => providers.flowMore())
   ipcMain.handle('flow:info', async () => providers.flowInfo())
   ipcMain.handle('flow:seeds', async () => providers.flowSeeds())
@@ -50,6 +86,7 @@ export function registerIpc(): void {
   )
   ipcMain.handle('radio:artist', async (_e, ref: { id?: string; name?: string }) => providers.artistRadio(ref ?? {}))
   ipcMain.handle('radio:more', async (_e, ref: { id?: string; name?: string }) => providers.radioMore(ref ?? {}))
+  ipcMain.handle('radio:track', async (_e, track: Track) => providers.trackSimilar(track))
 
   // библиотека: лайки и история живут в main-процессе, UI получает готовые списки
   ipcMain.handle('library', async () => providers.getLibrary())

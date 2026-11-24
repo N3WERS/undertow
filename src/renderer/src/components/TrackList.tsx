@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import type { Track } from '../types'
-import { IconDisc, IconHeart, IconNote, IconPlay, IconPlus } from './Icons'
+import { IconDisc, IconHeart, IconListPlus, IconNote, IconPlay, IconPlus, IconWave, IconX } from './Icons'
 import ArtistLine from './ArtistLine'
 
 interface Props {
@@ -24,6 +25,14 @@ interface Props {
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
   /** что ставить в очередь при клике, если показан только кусок списка */
   playContext?: Track[]
+  /** добавить трек в плейлист (открывает выбор плейлиста) */
+  onAddToPlaylist?: (track: Track) => void
+  /** убрать трек из плейлиста */
+  onRemoveTrack?: (track: Track) => void
+  /** перетаскивание строк: from/to индексы (для плейлистов) */
+  onReorder?: (from: number, to: number) => void
+  /** «похожее»: радио от этого трека */
+  onSimilar?: (track: Track) => void
 }
 
 const SRC_LABEL: Record<string, string> = { yandex: 'Я', youtube: 'YT' }
@@ -51,9 +60,14 @@ export default function TrackList({
   onAddToQueue,
   onOpenArtist,
   onOpenAlbum,
-  playContext
+  playContext,
+  onAddToPlaylist,
+  onRemoveTrack,
+  onReorder,
+  onSimilar
 }: Props) {
   const list = limit ? tracks.slice(0, limit) : tracks
+  const [dragging, setDragging] = useState<number | null>(null)
   return (
     <div className="tracks">
       {list.map((t, i) => {
@@ -70,9 +84,30 @@ export default function TrackList({
             key={`${t.id}-${i}`}
             role="button"
             tabIndex={0}
-            className={`track${isCurrent ? ' playing' : ''}${t.playable ? '' : ' locked'}`}
+            className={`track${isCurrent ? ' playing' : ''}${t.playable ? '' : ' locked'}${
+              dragging === i ? ' dragging' : ''
+            }`}
             onClick={activate}
             onMouseEnter={() => onHover?.(t)}
+            draggable={Boolean(onReorder)}
+            onDragStart={onReorder ? () => setDragging(i) : undefined}
+            onDragOver={
+              onReorder
+                ? (e) => {
+                    if (dragging !== null) e.preventDefault()
+                  }
+                : undefined
+            }
+            onDrop={
+              onReorder
+                ? (e) => {
+                    e.preventDefault()
+                    if (dragging !== null && dragging !== i) onReorder(dragging, i)
+                    setDragging(null)
+                  }
+                : undefined
+            }
+            onDragEnd={onReorder ? () => setDragging(null) : undefined}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
@@ -118,6 +153,30 @@ export default function TrackList({
 
             {!t.playable && <span className="track-badge">скоро</span>}
             <span className="track-actions">
+              {onSimilar ? (
+                <button
+                  className="row-action similar-track"
+                  title="Похожее: радио от этого трека"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onSimilar(t)
+                  }}
+                >
+                  <IconWave width={14} height={14} />
+                </button>
+              ) : null}
+              {onAddToPlaylist ? (
+                <button
+                  className="row-action add-playlist"
+                  title="Добавить в плейлист"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onAddToPlaylist(t)
+                  }}
+                >
+                  <IconListPlus width={14} height={14} />
+                </button>
+              ) : null}
               {onAddToQueue && t.playable ? (
                 <button
                   className="row-action add-queue"
@@ -163,6 +222,18 @@ export default function TrackList({
                   }}
                 >
                   <IconHeart width={15} height={15} filled={liked} />
+                </button>
+              ) : null}
+              {onRemoveTrack ? (
+                <button
+                  className="row-action remove-track"
+                  title="Убрать из плейлиста"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onRemoveTrack(t)
+                  }}
+                >
+                  <IconX width={13} height={13} />
                 </button>
               ) : null}
             </span>

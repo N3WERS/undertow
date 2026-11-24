@@ -19,6 +19,8 @@ import * as radio from '../radio'
 import * as browse from '../browse'
 import * as flow from '../flow'
 import * as genres from '../genres'
+import * as playlists from '../playlists'
+import * as lyrics from '../lyrics'
 import type { BrowsePage, ResolvedStream, Section, Track } from './types'
 
 export interface ProviderState {
@@ -206,6 +208,12 @@ export async function flowStart(genre?: string): Promise<{
 export async function flowGenres(): Promise<{ items: genres.GenreInfo[]; genre?: string }> {
   await genres.ensure().catch(() => undefined)
   return { items: genres.list(), genre: recPrefs.flowGenre() }
+}
+
+/** Страница жанра: шапка и топ артистов из библиотеки. */
+export async function genreDetail(id: string): Promise<ReturnType<typeof genres.detail>> {
+  await genres.ensure().catch(() => undefined)
+  return genres.detail(String(id))
 }
 
 export function flowMore(): Promise<Track[]> {
@@ -437,6 +445,119 @@ export async function backfillDurations(limit = 240): Promise<number> {
   return changed
 }
 
+/* ------------------------------ поиск по разделам ------------------------- */
+
+export interface SearchAll {
+  tracks: Track[]
+  albums: { id: string; title: string; year?: string; coverUrl?: string; type?: 'single' | 'ep' | 'album' }[]
+  artists: { id: string; name: string; coverUrl?: string }[]
+}
+
+/**
+ * Треки берём из Яндекса, если он активен (качество и метаданные лучше),
+ * альбомы и артисты — всегда из YouTube Music: без токена это единственный
+ * источник, который отдаёт все три разреза сразу.
+ */
+export async function searchAll(query: string): Promise<SearchAll> {
+  const term = String(query ?? '').trim()
+  if (!term) return { tracks: [], albums: [], artists: [] }
+  await ensureYandexChecked()
+  const token = getYandexToken()
+  const [ym, music] = await Promise.all([
+    token && yandexReady()
+      ? yandex.search(token, term, 24).catch(() => [] as Track[])
+      : Promise.resolve([] as Track[]),
+    youtube.musicSearchAll(term).catch(() => ({ tracks: [], albums: [], artists: [] }))
+  ])
+  const merged: Track[] = []
+  const seen = new Set<string>()
+  const key = (t: Track): string => `${t.title.toLowerCase()}|${t.artist.toLowerCase()}`
+  for (const t of [...ym, ...music.tracks]) {
+    if (seen.has(key(t))) continue
+    seen.add(key(t))
+    merged.push(t)
+  }
+  return { tracks: merged.slice(0, 30), albums: music.albums, artists: music.artists }
+}
+
+/* --------------------------------- тексты --------------------------------- */
+
+export async function lyricsOf(track: Track): Promise<lyrics.Lyrics | null> {
+  return lyrics.get(track)
+}
+
+/* -------------------------------- плейлисты ------------------------------- */
+
+export function playlistList(): playlists.PlaylistSummary[] {
+  return playlists.list()
+}
+
+export function playlistGet(id: string): playlists.Playlist | null {
+  return playlists.get(String(id))
+}
+
+export function playlistCreate(title: string): playlists.Playlist {
+  return playlists.create(String(title ?? ''))
+}
+
+export function playlistRename(id: string, title: string): playlists.Playlist | null {
+  return playlists.rename(String(id), String(title ?? ''))
+}
+
+export function playlistRemove(id: string): boolean {
+  return playlists.remove(String(id))
+}
+
+export function playlistAdd(id: string, tracks: Track[]): number {
+  return playlists.addTracks(String(id), Array.isArray(tracks) ? tracks : [])
+}
+
+export function playlistRemoveTrack(id: string, trackId: string): playlists.Playlist | null {
+  return playlists.removeTrack(String(id), String(trackId))
+}
+
+export function playlistReorder(id: string, from: number, to: number): playlists.Playlist | null {
+  return playlists.reorder(String(id), Number(from), Number(to))
+}
+
+export function playlistExport(): string {
+  return playlists.exportJson()
+}
+
+/**
+ * Импорт своих плейлистов из Яндекса. Одним списком, без выбора: так проще
+ * и не нужно строить отдельный экран. Существующие названия пропускаем.
+ */
+export async function importYandexPlaylists(): Promise<{
+  created: number
+  skipped: number
+  titles: string[]
+}> {
+  await ensureYandexChecked()
+  const token = getYandexToken()
+  if (!token || !yandexReady() || !yandexUid) {
+    throw new Error('Импорт плейлистов доступен при подключённом Яндексе с Плюсом')
+  }
+  const remote = await yandex.userPlaylists(token, yandexUid)
+  const existing = new Set(playlists.list().map((p) => p.title.toLowerCase()))
+  const titles: string[] = []
+  let skipped = 0
+  for (const p of remote) {
+    if (existing.has(p.title.toLowerCase())) {
+      skipped++
+      continue
+    }
+    const tracks = await yandex.playlistTracks(token, yandexUid, p.kind).catch(() => [] as Track[])
+    if (!tracks.length) {
+      skipped++
+      continue
+    }
+    playlists.create(p.title, tracks)
+    titles.push(p.title)
+  }
+  return { created: titles.length, skipped, titles }
+}
+
 /* ---------------------------- обратная связь ----------------------------- */
 
 export function hideSection(sectionId: string): string[] {
@@ -553,6 +674,13 @@ export async function artistRadio(ref: PageRef): Promise<{ title: string; tracks
 }
 
 /** Дозаправка играющего радио (режим определяется сессией в main). */
+/** «Похожее» на трек: работает и на Яндексе, и на YouTube. */
+export async function trackSimilar(track: Track): Promise<{ title: string; tracks: Track[] }> {
+  await ensureYandexChecked()
+  const token = getYandexToken()
+  return radio.similar(token && yandexReady() ? token : null, track)
+}
+
 export async function radioMore(ref: PageRef): Promise<Track[]> {
   await ensureYandexChecked()
   const token = getYandexToken()

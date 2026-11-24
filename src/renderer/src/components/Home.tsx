@@ -30,6 +30,8 @@ interface Props {
   onRestoreHidden?: () => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
+  onAddToPlaylist?: (track: Track) => void
+  onSimilar?: (track: Track) => void
 }
 
 /** Из id секции достаём сущность, для которой есть отдельная страница. */
@@ -193,7 +195,9 @@ export default function Home({
   hiddenCount,
   onRestoreHidden,
   onOpenArtist,
-  onOpenAlbum
+  onOpenAlbum,
+  onAddToPlaylist,
+  onSimilar
 }: Props) {
   // раскрытые секции: по умолчанию видно 8 строк, кнопка показывает все
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -515,6 +519,8 @@ export default function Home({
                 onAddToQueue={onAddToQueue}
                 onOpenArtist={onOpenArtist}
                 onOpenAlbum={onOpenAlbum}
+                onAddToPlaylist={onAddToPlaylist}
+                onSimilar={onSimilar}
                 playContext={s.items}
               />
               {canExpand ? (

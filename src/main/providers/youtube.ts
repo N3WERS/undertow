@@ -130,6 +130,40 @@ function collectItems(node: unknown, out: ParserItem[] = [], depth = 0): ParserI
 
 /* ------------------------------- методы --------------------------------- */
 
+/** Поиск сразу в трёх разрезах YouTube Music: треки, альбомы, артисты. */
+export interface YmSearchAll {
+  tracks: Track[]
+  albums: YmAlbumRef[]
+  artists: YmArtistRef[]
+}
+
+export async function musicSearchAll(query: string): Promise<YmSearchAll> {
+  const q = query.trim()
+  if (!q) return { tracks: [], albums: [], artists: [] }
+  const yt = await client()
+  const [songs, albums, artists] = await Promise.all([
+    yt.music.search(q, { type: 'song' }).catch(() => null),
+    yt.music.search(q, { type: 'album' }).catch(() => null),
+    yt.music.search(q, { type: 'artist' }).catch(() => null)
+  ])
+  const tracks = dedupe(
+    collectItems(songs)
+      .map((item) => musicTrack(item, undefined, { artist: undefined, artistId: undefined }))
+      .filter((t): t is Track => t !== null && t.playable)
+  ).slice(0, 24)
+  const albumRefs = dedupe(
+    collectItems(albums)
+      .map(albumRefOf)
+      .filter((a): a is YmAlbumRef => a !== null)
+  ).slice(0, 12)
+  const artistRefs = dedupe(
+    collectItems(artists)
+      .map(artistRefOf)
+      .filter((a): a is YmArtistRef => a !== null)
+  ).slice(0, 12)
+  return { tracks, albums: albumRefs, artists: artistRefs }
+}
+
 /** Лента «Обзор»: Новые альбомы и синглы / В тренде / Новые клипы. */
 export async function explore(): Promise<Section[]> {
   const yt = await client()
@@ -253,6 +287,28 @@ function bigCover(url: string | undefined): string | undefined {
   return url?.replace(/=w\d+-h\d+/, '=w544-h544')
 }
 
+/**
+ * «Похожее»: очередь YouTube Music (Up next) для конкретного видео.
+ * Возвращает до `limit` треков, без самого затравочного.
+ */
+export async function relatedTracks(videoId: string, limit = 40): Promise<Track[]> {
+  if (!/^[\w-]{11}$/.test(videoId)) return []
+  try {
+    const yt = await client()
+    const panel = await yt.music.getUpNext(videoId)
+    const rows = (panel.contents ?? []) as unknown as (ParserItem & { video_id?: string })[]
+    const tracks = rows
+      .map((row) => {
+        const id = row.video_id ?? row.id
+        return musicTrack(typeof id === 'string' ? { ...row, id } : row)
+      })
+      .filter((t): t is Track => t !== null && t.playable && t.id !== `yt:${videoId}`)
+    return dedupe(tracks).slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
 /** Обложка лежит либо в thumbnails, либо в thumbnail.contents. */
 function coverOf(node: unknown): string | undefined {
   const direct = image(node)
@@ -335,7 +391,7 @@ export function musicTrack(item: ParserItem, album?: YmAlbumRef, fallback?: Trac
   }
 }
 
-function albumRefOf(item: ParserItem): YmAlbumRef | null {
+export function albumRefOf(item: ParserItem): YmAlbumRef | null {
   const id = typeof item.id === 'string' ? item.id : ''
   if (!id.startsWith('MPREb')) return null
   const title = text(item.title) || text(item.name)

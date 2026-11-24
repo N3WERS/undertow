@@ -8,6 +8,10 @@ import LibraryView from './components/LibraryView'
 import QueuePanel from './components/QueuePanel'
 import BrowseView from './components/BrowseView'
 import ReleasesView from './components/ReleasesView'
+import GenresView from './components/GenresView'
+import PlaylistsView from './components/PlaylistsView'
+import PlaylistPicker from './components/PlaylistPicker'
+import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import { AudioEngine, type Snapshot } from './audio/engine'
 import type { BrowsePage, LibrarySnapshot, ProviderState, ReleaseItem, Section, Track, TrackVersion } from './types'
@@ -35,6 +39,8 @@ const EMPTY_SNAP: Snapshot = { playing: false, time: 0, duration: 0, rms: 0, gai
 
 export default function App() {
   const [view, setView] = useState<View>('home')
+  const [pickerTrack, setPickerTrack] = useState<Track | null>(null)
+  const [lyricsOpen, setLyricsOpen] = useState(false)
   const [sections, setSections] = useState<Section[]>([])
   const [loading, setLoading] = useState(true)
   const [homeError, setHomeError] = useState<string | null>(null)
@@ -572,6 +578,24 @@ export default function App() {
   }, [playTrack, toast])
 
   const [radioLoading, setRadioLoading] = useState(false)
+  /** «похожее»: радио от конкретного трека (в отличие от радио артиста) */
+  const startSimilar = useCallback(
+    async (t: Track) => {
+      setRadioLoading(true)
+      try {
+        const res = await window.undertow.radioTrack(t)
+        if (!res.tracks.length) throw new Error('Похожих треков не нашлось')
+        playTrack(res.tracks[0], res.tracks)
+        radioRef.current = null
+        toast(`${res.title}: ${res.tracks.length} треков`)
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), 'error')
+      } finally {
+        setRadioLoading(false)
+      }
+    },
+    [playTrack, toast]
+  )
   const startRadio = useCallback(
     async (ref: { id?: string; name: string }) => {
       setRadioLoading(true)
@@ -796,6 +820,8 @@ export default function App() {
               onOpenArtist={openArtist}
               onRadio={() => void startRadio({ id: browse.id, name: browse.name ?? browse.title })}
               radioLoading={radioLoading}
+              onAddToPlaylist={setPickerTrack}
+              onSimilar={(t) => void startSimilar(t)}
             />
           )}
 
@@ -819,6 +845,8 @@ export default function App() {
               onHideSection={(id) => void hideSection(id)}
               hiddenCount={hidden.length}
               onRestoreHidden={() => void restoreHidden()}
+              onAddToPlaylist={setPickerTrack}
+              onSimilar={(t) => void startSimilar(t)}
               onOpenArtist={openArtist}
               onOpenAlbum={openAlbum}
             />
@@ -852,6 +880,10 @@ export default function App() {
             />
           )}
 
+          {!browse && view === 'genres' && (
+            <GenresView onStartGenre={(id) => void startFlow(id)} onOpenArtist={openArtist} />
+          )}
+
           {!browse && view === 'search' && (
             <SearchView
               currentId={currentId}
@@ -864,6 +896,27 @@ export default function App() {
               onAddToQueue={addToQueue}
               onOpenArtist={openArtist}
               onOpenAlbum={openAlbum}
+              onAddToPlaylist={setPickerTrack}
+              onSimilar={(t) => void startSimilar(t)}
+            />
+          )}
+
+          {!browse && view === 'playlists' && (
+            <PlaylistsView
+              canImport={Boolean(state?.yandex.active)}
+              currentId={currentId}
+              playing={snap.playing}
+              likedIds={likedIds}
+              onPlay={playTrack}
+              onToggle={toggle}
+              onLike={toggleLike}
+              onHover={hoverPrewarm}
+              onAddToQueue={addToQueue}
+              onAddToPlaylist={setPickerTrack}
+              onSimilar={(t) => void startSimilar(t)}
+              onOpenArtist={openArtist}
+              onOpenAlbum={openAlbum}
+              onToast={toast}
             />
           )}
 
@@ -900,6 +953,8 @@ export default function App() {
               onAddToQueue={addToQueue}
               onOpenArtist={openArtist}
               onOpenAlbum={openAlbum}
+              onAddToPlaylist={setPickerTrack}
+              onSimilar={(t) => void startSimilar(t)}
               onImport={() => void importLikes()}
               onClearHistory={() => {
                 void window.undertow.clearHistory().then(() => {
@@ -946,7 +1001,22 @@ export default function App() {
         queueCount={queueState.queue.length}
         queueOpen={queueOpen}
         onToggleQueue={() => setQueueOpen((v) => !v)}
+        lyricsOpen={lyricsOpen}
+        onToggleLyrics={() => setLyricsOpen((v) => !v)}
       />
+
+      {lyricsOpen && (
+        <LyricsPanel
+          track={track}
+          time={snap.time}
+          shifted={queueOpen}
+          onClose={() => setLyricsOpen(false)}
+          onSeek={(sec) => {
+            engineRef.current?.seek(sec)
+            setSnap((s) => ({ ...s, time: sec }))
+          }}
+        />
+      )}
 
       {queueOpen && (
         <QueuePanel
@@ -973,6 +1043,13 @@ export default function App() {
           }}
         />
       )}
+
+      <PlaylistPicker
+        track={pickerTrack}
+        onClose={() => setPickerTrack(null)}
+        onAdded={(title) => toast(`Добавлено в «${title}»`)}
+        onToast={toast}
+      />
 
       <div className="toasts">
         {toasts.map((t) => (

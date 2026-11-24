@@ -20,6 +20,8 @@ interface Props {
   onHover?: (track: Track) => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
+  onAddToPlaylist?: (track: Track) => void
+  onSimilar?: (track: Track) => void
   onAddToQueue?: (track: Track) => void
 }
 
@@ -99,6 +101,8 @@ export default function LibraryView(p: Props) {
           onAddToQueue={p.onAddToQueue}
           onOpenArtist={p.onOpenArtist}
           onOpenAlbum={p.onOpenAlbum}
+          onAddToPlaylist={p.onAddToPlaylist}
+          onSimilar={p.onSimilar}
           showSource
         />
       )}

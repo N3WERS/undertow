@@ -27,6 +27,13 @@ export const IconSearch = (p: P) => (
   </svg>
 )
 
+export const IconTag = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h5.2c.4 0 .8.16 1.06.44l7.3 7.3a1.5 1.5 0 0 1 0 2.12l-5.2 5.2a1.5 1.5 0 0 1-2.12 0l-7.3-7.3A1.5 1.5 0 0 1 4 10.7z" />
+    <circle cx="8.6" cy="8.6" r="1.4" />
+  </svg>
+)
+
 export const IconWave = (p: P) => (
   <svg {...base(p)}>
     <path d="M3 12h2l2-6 3 13 3-16 3 12 2-4h3" />
@@ -117,6 +124,32 @@ export const IconHeart = ({ filled, ...p }: P & { filled?: boolean }) => (
 export const IconTrash = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 7h16M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7l.8 12a1.6 1.6 0 0 0 1.6 1.5h6.2a1.6 1.6 0 0 0 1.6-1.5L17.5 7" />
+  </svg>
+)
+
+export const IconText = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 6h14M12 6v12M9 18h6" />
+  </svg>
+)
+
+export const IconList = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 7h16M4 12h10M4 17h13" />
+    <circle cx="18.4" cy="15.6" r="2.4" />
+  </svg>
+)
+
+export const IconListPlus = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 6.5h11M4 11.5h11M4 16.5h7" />
+    <path d="M17.5 13v6M14.5 16h6" />
+  </svg>
+)
+
+export const IconX = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 )
 

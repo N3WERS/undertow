@@ -17,6 +17,8 @@ interface Props {
   onAddToQueue?: (track: Track) => void
   onBack: () => void
   onOpenAlbum: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
+  onAddToPlaylist?: (track: Track) => void
+  onSimilar?: (track: Track) => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
   /** «радио артиста»: своё + похожие, сразу в очередь */
   onRadio?: () => void
@@ -42,6 +44,8 @@ export default function BrowseView({
   onAddToQueue,
   onBack,
   onOpenAlbum,
+  onAddToPlaylist,
+  onSimilar,
   onOpenArtist,
   onRadio,
   radioLoading
@@ -181,6 +185,8 @@ export default function BrowseView({
             onAddToQueue={onAddToQueue}
             onOpenArtist={onOpenArtist}
             onOpenAlbum={onOpenAlbum}
+            onAddToPlaylist={onAddToPlaylist}
+            onSimilar={onSimilar}
           />
         ) : (
           <div className="empty">

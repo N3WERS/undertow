@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { startAudioProxy } from './audioProxy'
 import { registerIpc } from './ipc'
@@ -7,6 +7,32 @@ import * as providers from './providers'
 const BG = '#070a0e'
 
 let win: BrowserWindow | null = null
+
+/**
+ * В dev кладём окно на второй монитор (если он есть), чтобы проверки и
+ * скриншоты не закрывали пользователю основную работу. В собранном
+ * приложении окно открывается там, где его оставили / на основном экране.
+ */
+function placeOnSecondDisplay(window: BrowserWindow): void {
+  if (app.isPackaged) return
+  try {
+    const primary = screen.getPrimaryDisplay()
+    const target = screen.getAllDisplays().find((d) => d.id !== primary.id)
+    if (!target) return
+    const area = target.workArea
+    const bounds = window.getBounds()
+    const width = Math.min(bounds.width, area.width)
+    const height = Math.min(bounds.height, area.height)
+    window.setBounds({
+      x: area.x + Math.round((area.width - width) / 2),
+      y: area.y + Math.round((area.height - height) / 2),
+      width,
+      height
+    })
+  } catch {
+    /* один монитор или экран ещё не готов — окно откроется по умолчанию */
+  }
+}
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -32,6 +58,7 @@ function createWindow(): void {
     }
   })
 
+  placeOnSecondDisplay(win)
   win.once('ready-to-show', () => win?.show())
 
   // В dev полезно видеть консоль рендерера в терминале
