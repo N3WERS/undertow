@@ -14,7 +14,8 @@ import {
   IconPrev,
   IconQueue,
   IconText,
-  IconVolume
+  IconVolume,
+  IconWave
 } from './Icons'
 
 interface Props {
@@ -83,7 +84,9 @@ export default function PlayerBar(p: Props) {
 
   return (
     <footer
-      className={`player${p.track && p.playing ? ' playing' : ''}`}
+      className={`player${p.track && p.playing ? ' playing' : ''}${!p.track ? ' idle' : ''}${
+        p.track && !p.playing ? ' paused' : ''
+      }`}
       style={{ '--rms': Math.min(1, Math.max(0, p.level ?? live.rms)).toFixed(3) } as CSSProperties}
     >
       <div className={`now${p.track ? '' : ' now-empty'}`}>
@@ -91,7 +94,9 @@ export default function PlayerBar(p: Props) {
           {p.track?.coverUrl ? (
             <img className="now-cover" src={p.track.coverUrl} alt="" />
           ) : (
-            <span className="now-cover" />
+            <span className="now-cover idle-cover" aria-hidden="true">
+              <IconWave width={24} height={24} />
+            </span>
           )}
           <span className={`now-eq${p.track && p.playing ? ' on' : ''}`} aria-hidden="true">
             <i />
@@ -187,6 +192,20 @@ export default function PlayerBar(p: Props) {
           </button>
         </div>
 
+        {!p.track ? (
+          <div className="idle-strip" aria-hidden="true">
+            <span className="idle-bars">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>выбери трек — и волна подхватит</span>
+          </div>
+        ) : (
         <div className="scrub">
           <span>{fmtTime(progress)}</span>
           <div
@@ -209,10 +228,11 @@ export default function PlayerBar(p: Props) {
           </div>
           <span>{fmtTime(duration)}</span>
         </div>
+        )}
       </div>
-
       <div className="player-right">
-        <div className="player-tools">
+        {p.track ? (
+          <div className="player-tools">
           {p.track && p.hasLyrics ? (
             <button
               className={`tool-btn${p.lyricsOpen ? ' open' : ''}`}
@@ -333,8 +353,9 @@ export default function PlayerBar(p: Props) {
             <IconQueue width={15} height={15} />
             {p.queueCount > 0 ? <span className="queue-btn-count">{p.queueCount}</span> : null}
           </button>
-        </div>
-        <span className="player-divider" />
+          </div>
+        ) : null}
+        {p.track ? <span className="player-divider" /> : null}
         <div className="volume">
           <button className="icon-btn" onClick={() => p.onVolume(p.volume > 0 ? 0 : 0.85)} title="Звук">
             {p.volume > 0 ? <IconVolume /> : <IconMute />}

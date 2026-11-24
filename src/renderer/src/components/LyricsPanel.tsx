@@ -55,12 +55,28 @@ export default function LyricsPanel({ track, shifted, onSeek, onClose }: Props) 
   return (
     <div className={`lyrics-panel${shifted ? ' shifted' : ''}`}>
       <div className="lyrics-head">
-        <div>
-          <b>Текст</b>
+        {track.coverUrl ? (
+          <img className="lyrics-cover" src={track.coverUrl} alt="" />
+        ) : (
+          <span className="lyrics-cover lyrics-cover-empty" aria-hidden="true" />
+        )}
+        <div className="lyrics-head-text">
+          <span className="lyrics-kicker">
+            Текст песни
+            <span className="lyrics-bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </span>
+          <b>{track.title}</b>
           <span>{track.artist}</span>
         </div>
         <div className="lyrics-head-right">
-          <span className="lyrics-src">LRCLIB</span>
+          <span className="lyrics-src">
+            <i />
+            LRCLIB
+          </span>
           <button className="icon-btn" onClick={onClose} title="Скрыть текст">
             <IconX width={14} height={14} />
           </button>
