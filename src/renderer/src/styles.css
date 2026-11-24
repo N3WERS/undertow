@@ -1652,6 +1652,20 @@ img {
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   transition: width 0.12s linear;
 }
+/* пока ссылка на звук резолвится, полоска показывает, что процесс идёт */
+.bar.loading .bar-fill {
+  width: 34% !important;
+  transition: none;
+  animation: barLoading 1.05s ease-in-out infinite;
+}
+@keyframes barLoading {
+  from {
+    transform: translateX(-105%);
+  }
+  to {
+    transform: translateX(310%);
+  }
+}
 .bar:hover .bar-track {
   height: 5px;
 }

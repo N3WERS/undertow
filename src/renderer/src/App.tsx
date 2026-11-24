@@ -13,6 +13,7 @@ import PlaylistPicker from './components/PlaylistPicker'
 import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import { AudioEngine, type Snapshot } from './audio/engine'
+import { setProgress } from './audio/progress'
 import type { BrowsePage, LibrarySnapshot, ProviderState, ReleaseItem, Section, Track, TrackVersion } from './types'
 import { APP_VERSION } from './version'
 
@@ -346,7 +347,14 @@ export default function App() {
   useEffect(() => {
     const engine = new AudioEngine({
       onSnapshot: (s) => {
-        setSnap(s)
+        setProgress(s.time, s.duration, s.rms)
+        // в state попадают только редкие поля: время и уровень громкости идут
+        // через отдельный стор, чтобы не перерисовывать списки на каждом тике
+        setSnap((prev) =>
+          prev.playing === s.playing && prev.trackId === s.trackId && prev.duration === s.duration
+            ? prev
+            : { ...prev, playing: s.playing, trackId: s.trackId, duration: s.duration }
+        )
         queueTimeRef.current = s.time
         if (s.duration > 0) setResolving(false)
         // позицию достаточно сохранять раз в пять секунд — очередь пишется тем же файлом
@@ -361,12 +369,8 @@ export default function App() {
       onTrackChange: (t) => {
         setTrack(t)
         // полоска не должна показывать позицию прошлого трека, пока грузится новый
-        setSnap((prev) => ({
-          ...prev,
-          time: 0,
-          duration: t?.durationSec ?? 0,
-          trackId: t?.id ?? null
-        }))
+        setProgress(0, t?.durationSec ?? 0, 0)
+        setSnap((prev) => ({ ...prev, duration: t?.durationSec ?? 0, trackId: t?.id ?? null }))
         if (t) {
           setResolving(false)
           void window.undertow.addHistory(t)
@@ -423,6 +427,7 @@ export default function App() {
         if (!alive || !engine || !saved?.tracks.length) return
         const track = saved.tracks[saved.index]
         engine.restore(saved.tracks, saved.index, saved.shuffled, saved.time)
+        setProgress(saved.time, track?.durationSec ?? 0, 0)
         queueTimeRef.current = saved.time
         queueMetaRef.current = { index: saved.index, shuffled: saved.shuffled }
         setTrack(track ?? null)
@@ -1011,14 +1016,13 @@ export default function App() {
         liked={track ? likedIds.has(track.id) : false}
         onLike={() => track && toggleLike(track)}
         normalize={normalize}
-        level={snap.rms}
         onNormalize={setNormalize}
         onToggle={toggle}
         onNext={() => go(1)}
         onPrev={() => go(-1)}
         onSeek={(sec) => {
           engineRef.current?.seek(sec)
-          setSnap((s) => ({ ...s, time: sec }))
+          setProgress(sec, snap.duration, 0)
         }}
         onVolume={setVolume}
         onOpenArtist={openArtist}
@@ -1034,12 +1038,11 @@ export default function App() {
       {lyricsOpen && (
         <LyricsPanel
           track={track}
-          time={snap.time}
           shifted={queueOpen}
           onClose={() => setLyricsOpen(false)}
           onSeek={(sec) => {
             engineRef.current?.seek(sec)
-            setSnap((s) => ({ ...s, time: sec }))
+            setProgress(sec, snap.duration, 0)
           }}
         />
       )}

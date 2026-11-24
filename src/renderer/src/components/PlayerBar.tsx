@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Track, TrackVersion } from '../types'
 import { fmtTime } from './TrackList'
+import { useProgress } from '../audio/progress'
 import ArtistLine from './ArtistLine'
 import { IconQueue, IconHeart, IconMute, IconNext, IconPause, IconPlus, IconPlay, IconPrev, IconText, IconVolume } from './Icons'
 
@@ -54,20 +55,24 @@ export default function PlayerBar(p: Props) {
   for (const v of p.versions?.list ?? []) counts.set(v.label, (counts.get(v.label) ?? 0) + 1)
   const chips = [...counts.entries()].sort((a, b) => b[1] - a[1])
   const shown = (p.versions?.list ?? []).filter((v) => !filter || v.label === filter)
-  const pct = p.duration > 0 ? Math.min(100, (p.progress / p.duration) * 100) : 0
+  // время приходит из отдельного стора: App не перерисовывается на каждом тике
+  const live = useProgress()
+  const progress = p.track ? live.time : p.progress
+  const duration = live.duration || p.duration
+  const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0
 
   const seekAt = (clientX: number) => {
     const el = barRef.current
-    if (!el || p.duration <= 0) return
+    if (!el || duration <= 0) return
     const r = el.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
-    p.onSeek(ratio * p.duration)
+    p.onSeek(ratio * duration)
   }
 
   return (
     <footer
       className={`player${p.track && p.playing ? ' playing' : ''}`}
-      style={{ '--rms': Math.min(1, Math.max(0, p.level ?? 0)).toFixed(3) } as CSSProperties}
+      style={{ '--rms': Math.min(1, Math.max(0, p.level ?? live.rms)).toFixed(3) } as CSSProperties}
     >
       <div className={`now${p.track ? '' : ' now-empty'}`}>
         <div className="now-media">
@@ -171,9 +176,9 @@ export default function PlayerBar(p: Props) {
         </div>
 
         <div className="scrub">
-          <span>{fmtTime(p.progress)}</span>
+          <span>{fmtTime(progress)}</span>
           <div
-            className="bar"
+            className={`bar${p.resolving ? ' loading' : ''}`}
             ref={barRef}
             onMouseDown={(e) => {
               seekAt(e.clientX)
@@ -190,7 +195,7 @@ export default function PlayerBar(p: Props) {
               <div className="bar-fill" style={{ width: `${pct}%` }} />
             </div>
           </div>
-          <span>{fmtTime(p.duration)}</span>
+          <span>{fmtTime(duration)}</span>
         </div>
       </div>
 

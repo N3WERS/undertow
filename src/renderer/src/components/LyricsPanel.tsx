@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Lyrics, Track } from '../types'
 import { IconX } from './Icons'
+import { useProgress } from '../audio/progress'
 
 interface Props {
   track: Track | null
-  time: number
   shifted: boolean
   onSeek: (sec: number) => void
   onClose: () => void
 }
 
 /** Текст трека поверх плеера: LRC-строки подсвечиваются по ходу воспроизведения. */
-export default function LyricsPanel({ track, time, shifted, onSeek, onClose }: Props) {
+export default function LyricsPanel({ track, shifted, onSeek, onClose }: Props) {
+  const { time } = useProgress()
   const [data, setData] = useState<Lyrics | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const bodyRef = useRef<HTMLDivElement | null>(null)
