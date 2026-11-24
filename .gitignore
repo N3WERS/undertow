@@ -1,0 +1,9 @@
+node_modules/
+out/
+release/
+*.log
+shots/*.png
+!shots/icon-preview.png
+.DS_Store
+Thumbs.db
+.env
