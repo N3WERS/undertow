@@ -149,13 +149,13 @@ img {
   grid-template-rows: var(--titlebar) 1fr var(--player);
   height: 100%;
   background:
-    radial-gradient(980px 600px at 24% -16%, rgba(55, 214, 207, 0.11), transparent 65%),
-    radial-gradient(760px 520px at -6% 96%, rgba(52, 211, 153, 0.08), transparent 66%),
-    radial-gradient(880px 560px at 99% 0%, rgba(139, 92, 246, 0.13), transparent 66%),
-    radial-gradient(980px 680px at 8% 112%, rgba(52, 211, 153, 0.075), transparent 67%),
-    radial-gradient(900px 640px at 98% 72%, rgba(139, 92, 246, 0.1), transparent 68%),
-    radial-gradient(820px 620px at 96% 108%, rgba(111, 140, 255, 0.085), transparent 68%),
-    linear-gradient(142deg, #071211 0%, #080b12 44%, #0d0a17 100%);
+    radial-gradient(1020px 620px at 20% -18%, rgba(55, 214, 207, 0.105), transparent 68%),
+    radial-gradient(900px 720px at 28% 44%, rgba(55, 214, 207, 0.06), transparent 72%),
+    radial-gradient(760px 520px at -6% 96%, rgba(52, 211, 153, 0.06), transparent 68%),
+    radial-gradient(920px 580px at 102% -2%, rgba(139, 92, 246, 0.054), transparent 68%),
+    radial-gradient(980px 680px at 6% 112%, rgba(52, 211, 153, 0.052), transparent 70%),
+    radial-gradient(920px 660px at 100% 76%, rgba(139, 92, 246, 0.042), transparent 70%),
+    linear-gradient(135deg, #081312 0%, #080b11 48%, #0a0c13 100%);
 }
 
 .titlebar {
@@ -290,8 +290,8 @@ img {
   flex-direction: column;
   gap: 22px;
   padding: 18px 12px 14px;
-  border-right: 1px solid var(--line);
-  background: rgba(10, 15, 21, 0.55);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(8, 13, 18, 0.22);
   min-height: 0;
 }
 
