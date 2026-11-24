@@ -7,3 +7,4 @@ shots/*.png
 .DS_Store
 Thumbs.db
 .env
+it.json
