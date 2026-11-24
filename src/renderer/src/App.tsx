@@ -786,12 +786,7 @@ export default function App() {
         : 'yt-dlp не найден'
 
   return (
-    <div className={`app${snap.playing ? ' music-on' : ''}`}>
-      <div className="ambient" aria-hidden="true">
-        <span className="ambient-orb one" />
-        <span className="ambient-orb two" />
-        <span className="ambient-orb three" />
-      </div>
+    <div className="app">
       <header className="titlebar">
         <div className="brand">
           <span className="brand-mark">
