@@ -88,6 +88,13 @@ function firstArtist(artist: string): string {
   return artist.split(/\s*(?:,|&|feat\.|ft\.)\s*/i)[0]?.trim() || artist
 }
 
+/** Готовая пара из кэша: её можно включить без ожидания поиска. */
+export function cached(track: Track): string | null {
+  const saved = load()[track.id]
+  if (!saved || 'miss' in saved) return null
+  return Date.now() - saved.at < POS_TTL ? saved.ymId : null
+}
+
 export async function toYandex(token: string, track: Track): Promise<string | null> {
   const key = track.id
   const map = load()

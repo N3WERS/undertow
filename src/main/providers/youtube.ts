@@ -210,23 +210,39 @@ export function videoIdOf(trackId: string): string {
   return trackId.startsWith('yt:') ? trackId.slice(3) : trackId
 }
 
-/** Разрешает ссылку на звук с коротким кэшем, чтобы перемотка не дёргала yt-dlp. */
+/**
+ * Разрешает ссылку на звук с коротким кэшем, чтобы перемотка не дёргала yt-dlp.
+ * Параллельные запросы на один трек (прогрев следующего + ручное переключение)
+ * ждут один запуск, а не запускают yt-dlp дважды.
+ */
+const resolving = new Map<string, Promise<ResolvedStream>>()
+
 export async function resolveStream(trackId: string): Promise<ResolvedStream> {
   const cached = streamCache.get(trackId)
   if (cached && cached.expires > Date.now()) return cached.stream
+  const pending = resolving.get(trackId)
+  if (pending) return pending
 
-  const { url, ext, abr } = await ytResolve(videoIdOf(trackId))
-  const stream: ResolvedStream = {
-    url,
-    mime: ext === 'webm' ? 'audio/webm' : ext === 'mp4' || ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg',
-    bitrateKbps: abr ? Math.round(abr) : undefined,
-    ttlMs: CACHE_TTL
+  const job = (async () => {
+    const { url, ext, abr } = await ytResolve(videoIdOf(trackId))
+    const stream: ResolvedStream = {
+      url,
+      mime: ext === 'webm' ? 'audio/webm' : ext === 'mp4' || ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg',
+      bitrateKbps: abr ? Math.round(abr) : undefined,
+      ttlMs: CACHE_TTL
+    }
+    streamCache.set(trackId, { stream, expires: Date.now() + CACHE_TTL })
+    if (streamCache.size > 120) {
+      for (const [k, v] of streamCache) if (v.expires < Date.now()) streamCache.delete(k)
+    }
+    return stream
+  })()
+  resolving.set(trackId, job)
+  try {
+    return await job
+  } finally {
+    if (resolving.get(trackId) === job) resolving.delete(trackId)
   }
-  streamCache.set(trackId, { stream, expires: Date.now() + CACHE_TTL })
-  if (streamCache.size > 120) {
-    for (const [k, v] of streamCache) if (v.expires < Date.now()) streamCache.delete(k)
-  }
-  return stream
 }
 
 /** Кладёт готовую ссылку в кэш (когда она получена другим путём, без второго запуска yt-dlp). */

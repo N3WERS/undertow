@@ -360,6 +360,13 @@ export default function App() {
       },
       onTrackChange: (t) => {
         setTrack(t)
+        // полоска не должна показывать позицию прошлого трека, пока грузится новый
+        setSnap((prev) => ({
+          ...prev,
+          time: 0,
+          duration: t?.durationSec ?? 0,
+          trackId: t?.id ?? null
+        }))
         if (t) {
           setResolving(false)
           void window.undertow.addHistory(t)

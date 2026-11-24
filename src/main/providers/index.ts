@@ -787,8 +787,7 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
     await ensureYandexChecked()
     const token = getYandexToken()
     if (token && yandexReady()) {
-      const ymId = await yandexMatch.toYandex(token, meta)
-      if (ymId) {
+      const playYandex = async (ymId: string): Promise<ResolvedStream | null> => {
         try {
           const st = await yandex.resolveStream(token, ymId)
           return { ...st, source: 'yandex' }
@@ -798,8 +797,27 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
             yandexPlus = false
             yandexError = 'Яндекс вернул превью вместо трека — Плюс не активен, играю с YouTube'
           }
+          return null
         }
       }
+
+      const fromYandex = async (): Promise<ResolvedStream | null> => {
+        let ymId = yandexMatch.cached(meta)
+        if (!ymId) ymId = await yandexMatch.toYandex(token as string, meta)
+        return ymId ? playYandex(ymId) : null
+      }
+
+      // YouTube резолвим сразу: если Яндекс задумался, стартуем с него, а не
+      // держим полоску на нуле. Секунда — предел, после которого ожидание
+      // переключения уже выглядит как зависший плеер.
+      const yt = youtube.resolveStream(trackId)
+      void yt.catch(() => null)
+      const fast = await Promise.race([
+        fromYandex(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+      ])
+      if (fast) return fast
+      return await yt
     }
   }
 
