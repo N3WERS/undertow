@@ -454,7 +454,12 @@ export class AudioEngine {
       this.loadedInfo[this.active] = stream
       this.emitQuality(stream.mime, stream.bitrateKbps)
       this.handlers.onSource(
-        stream.fallback || stream.variant ? 'youtube' : track.provider === 'yandex' ? 'yandex' : 'youtube',
+        stream.source ??
+          (stream.fallback || stream.variant
+            ? 'youtube'
+            : track.provider === 'yandex'
+              ? 'yandex'
+              : 'youtube'),
         Boolean(stream.fallback)
       )
       el.currentTime = 0
@@ -532,7 +537,12 @@ export class AudioEngine {
     if (info) {
       this.emitQuality(info.mime, info.bitrateKbps)
       this.handlers.onSource(
-        info.fallback || info.variant ? 'youtube' : track.provider === 'yandex' ? 'yandex' : 'youtube',
+        info.source ??
+          (info.fallback || info.variant
+            ? 'youtube'
+            : track.provider === 'yandex'
+              ? 'yandex'
+              : 'youtube'),
         Boolean(info.fallback)
       )
       this.emitCopy(track)

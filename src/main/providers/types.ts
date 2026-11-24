@@ -66,6 +66,8 @@ export interface ResolvedStream {
   fallbackMatched?: { title: string; artist: string }
   /** вариант выбран вручную: играет как самостоятельный трек (его можно лайкнуть) */
   variant?: boolean
+  /** откуда реально пришёл звук (может отличаться от provider трека) */
+  source?: 'yandex' | 'youtube'
   /** id видео выбранного варианта */
   variantVideoId?: string
   /** найдена не точная копия, а близкий вариант */

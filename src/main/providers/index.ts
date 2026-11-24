@@ -20,6 +20,7 @@ import * as browse from '../browse'
 import * as flow from '../flow'
 import * as genres from '../genres'
 import * as playlists from '../playlists'
+import * as yandexMatch from '../yandexMatch'
 import * as lyrics from '../lyrics'
 import type { BrowsePage, ResolvedStream, Section, Track } from './types'
 
@@ -455,23 +456,16 @@ export interface SearchAll {
 export async function searchAll(query: string): Promise<SearchAll> {
   const term = String(query ?? '').trim()
   if (!term) return { tracks: [], albums: [], artists: [] }
-  await ensureYandexChecked()
-  const token = getYandexToken()
-  const [ym, music] = await Promise.all([
-    token && yandexReady()
-      ? yandex.search(token, term, 24).catch(() => [] as Track[])
-      : Promise.resolve([] as Track[]),
-    youtube.musicSearchAll(term).catch(() => ({ tracks: [], albums: [], artists: [] }))
-  ])
-  const merged: Track[] = []
-  const seen = new Set<string>()
-  const key = (t: Track): string => `${t.title.toLowerCase()}|${t.artist.toLowerCase()}`
-  for (const t of [...ym, ...music.tracks]) {
-    if (seen.has(key(t))) continue
-    seen.add(key(t))
-    merged.push(t)
+  // Весь каталог — YouTube Music, чтобы трек, альбом и артист были из одного
+  // источника. Яндекс тут только источник звука, когда подключён Плюс.
+  const music = await youtube
+    .musicSearchAll(term)
+    .catch(() => ({ tracks: [] as Track[], albums: [], artists: [] }))
+  let tracks = music.tracks
+  if (!tracks.length) {
+    tracks = await youtube.search(term, 20).catch(() => [] as Track[])
   }
-  return { tracks: merged.slice(0, 30), albums: music.albums, artists: music.artists }
+  return { tracks: tracks.slice(0, 30), albums: music.albums, artists: music.artists }
 }
 
 /* --------------------------------- тексты --------------------------------- */
@@ -786,5 +780,28 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
       fallbackMatched: mapping ? { title: mapping.title, artist: mapping.artist } : undefined
     }
   }
+
+  // Метаданные всегда из YouTube Music, но если есть Плюс и этот же трек
+  // нашёлся в Яндексе — звук берём оттуда: там MP3 320 против Opus ~160.
+  if (meta) {
+    await ensureYandexChecked()
+    const token = getYandexToken()
+    if (token && yandexReady()) {
+      const ymId = await yandexMatch.toYandex(token, meta)
+      if (ymId) {
+        try {
+          const st = await yandex.resolveStream(token, ymId)
+          return { ...st, source: 'yandex' }
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e)
+          if (message.includes('превью')) {
+            yandexPlus = false
+            yandexError = 'Яндекс вернул превью вместо трека — Плюс не активен, играю с YouTube'
+          }
+        }
+      }
+    }
+  }
+
   return youtube.resolveStream(trackId)
 }

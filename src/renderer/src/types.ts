@@ -46,6 +46,8 @@ export interface ResolvedStream {
   mime: string
   bitrateKbps?: number
   ttlMs: number
+  /** откуда реально пришёл звук (может отличаться от provider трека) */
+  source?: 'yandex' | 'youtube'
   fallback?: boolean
   fallbackTitle?: string
   fallbackMatched?: { title: string; artist: string }

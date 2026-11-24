@@ -82,7 +82,7 @@ export default function SearchView({
       <div className="page-head">
         <div>
           <h1>Поиск</h1>
-          <p>YouTube Music и Яндекс: треки, альбомы и исполнители</p>
+          <p>YouTube Music: треки, альбомы и исполнители</p>
         </div>
         {busy && <span className="spinner" />}
       </div>
