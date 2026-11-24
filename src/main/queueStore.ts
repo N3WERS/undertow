@@ -2,9 +2,10 @@
  * Очередь между запусками.
  *
  * Раньше очередь жила только в памяти рендерера: закрыл приложение — и
- * «Ничего не играет». Теперь состав очереди, позиция и время сохраняются в
+ * «Ничего не играет». Теперь состав очереди и текущий индекс сохраняются в
  * %APPDATA%/Undertow/queue.json, а на старте восстанавливаются в паузе: звук
- * не включается сам, но трек уже стоит в плеере и играет с того же места.
+ * не включается сам, но очередь уже на месте. Позиция внутри трека не
+ * запоминается — после запуска любой трек начинается с начала.
  *
  * Файл небольшой (до 500 треков), пишется атомарно и с задержкой. Старше
  * двух недель очередь не восстанавливаем: за это время она уже неактуальна.
@@ -22,8 +23,6 @@ export interface SavedQueue {
   tracks: Track[]
   index: number
   shuffled: boolean
-  /** позиция в текущем треке, секунды */
-  time: number
   savedAt: number
 }
 
@@ -32,7 +31,6 @@ interface QueueFile {
   at: number
   index: number
   shuffled: boolean
-  time: number
   tracks: Track[]
 }
 
@@ -105,7 +103,6 @@ function read(): QueueFile | null {
       at,
       index,
       shuffled: Boolean(parsed.shuffled),
-      time: Math.max(0, Math.min(Number(parsed.time) || 0, 24 * 3600)),
       tracks
     }
     return state
@@ -137,12 +134,7 @@ export function flush(): void {
 }
 
 /** Полная замена сохранённой очереди (при изменении состава). */
-export function save(input: {
-  tracks: Track[]
-  index: number
-  shuffled: boolean
-  time?: number
-}): void {
+export function save(input: { tracks: Track[]; index: number; shuffled: boolean }): void {
   const tracks = input.tracks
     .map((t) => cleanTrack(t))
     .filter((t): t is Track => t !== null)
@@ -153,26 +145,15 @@ export function save(input: {
     at: Date.now(),
     index: Math.max(0, Math.min(Math.floor(input.index), tracks.length - 1)),
     shuffled: Boolean(input.shuffled),
-    time: Math.max(0, Math.min(Number(input.time) || 0, 24 * 3600)),
     tracks
   }
-  scheduleSave()
-}
-
-/** Дешёвое обновление позиции: не гоняем весь список по IPC каждые 5 секунд. */
-export function touch(index: number, time: number): void {
-  read()
-  if (!state) return
-  state.at = Date.now()
-  state.index = Math.max(0, Math.min(Math.floor(index), state.tracks.length - 1))
-  state.time = Math.max(0, Math.min(Number(time) || 0, 24 * 3600))
   scheduleSave()
 }
 
 export function load(): SavedQueue | null {
   const data = read()
   if (!data) return null
-  return { tracks: data.tracks, index: data.index, shuffled: data.shuffled, time: data.time, savedAt: data.at }
+  return { tracks: data.tracks, index: data.index, shuffled: data.shuffled, savedAt: data.at }
 }
 
 export function clear(): void {

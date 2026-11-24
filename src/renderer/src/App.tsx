@@ -326,9 +326,7 @@ export default function App() {
 
   /* ------------------- очередь между запусками (queue.json) ----------------- */
 
-  const queueTimeRef = useRef(0)
   const queueMetaRef = useRef({ index: -1, shuffled: false })
-  const lastTouchRef = useRef(0)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const persistQueue = useCallback((queue: Track[], index: number, shuffled: boolean) => {
@@ -336,9 +334,7 @@ export default function App() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null
-      void window.undertow
-        .queueSave({ tracks: queue, index, shuffled, time: queueTimeRef.current })
-        .catch(() => undefined)
+      void window.undertow.queueSave({ tracks: queue, index, shuffled }).catch(() => undefined)
     }, 600)
   }, [])
 
@@ -355,16 +351,7 @@ export default function App() {
             ? prev
             : { ...prev, playing: s.playing, trackId: s.trackId, duration: s.duration }
         )
-        queueTimeRef.current = s.time
         if (s.duration > 0) setResolving(false)
-        // позицию достаточно сохранять раз в пять секунд — очередь пишется тем же файлом
-        if (queueMetaRef.current.index >= 0 && s.duration > 0) {
-          const now = performance.now()
-          if (now - lastTouchRef.current > 5000) {
-            lastTouchRef.current = now
-            void window.undertow.queueTime(queueMetaRef.current.index, s.time).catch(() => undefined)
-          }
-        }
       },
       onTrackChange: (t) => {
         setTrack(t)
@@ -426,15 +413,15 @@ export default function App() {
         const engine = engineRef.current
         if (!alive || !engine || !saved?.tracks.length) return
         const track = saved.tracks[saved.index]
-        engine.restore(saved.tracks, saved.index, saved.shuffled, saved.time)
-        setProgress(saved.time, track?.durationSec ?? 0, 0)
-        queueTimeRef.current = saved.time
+        // очередь помним, но позицию — нет: после запуска трек всегда с начала
+        engine.restore(saved.tracks, saved.index, saved.shuffled)
+        setProgress(0, track?.durationSec ?? 0, 0)
         queueMetaRef.current = { index: saved.index, shuffled: saved.shuffled }
         setTrack(track ?? null)
         setQueueState({ queue: saved.tracks, index: saved.index, shuffled: saved.shuffled })
         setSnap({
           playing: false,
-          time: saved.time,
+          time: 0,
           duration: track?.durationSec ?? 0,
           rms: 0,
           gainDb: 0,

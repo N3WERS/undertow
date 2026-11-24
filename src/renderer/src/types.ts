@@ -184,8 +184,7 @@ export interface UndertowApi {
   artistPage(ref: { id?: string; name?: string }): Promise<BrowsePage>
   albumPage(ref: { id?: string; title?: string; artist?: string; trackTitle?: string }): Promise<BrowsePage>
   queueGet(): Promise<{ tracks: Track[]; index: number; shuffled: boolean; time: number; savedAt: number } | null>
-  queueSave(state: { tracks: Track[]; index: number; shuffled: boolean; time?: number }): Promise<void>
-  queueTime(index: number, time: number): Promise<void>
+  queueSave(state: { tracks: Track[]; index: number; shuffled: boolean }): Promise<void>
   queueClear(): Promise<void>
   flowStart(genre?: string): Promise<{
     title: string

@@ -87,8 +87,6 @@ export class AudioEngine {
   /** хвост очереди в исходном порядке — чтобы выключить перемешивание */
   private shuffleTail: Track[] | null = null
   /** позиция, с которой нужно начать после восстановления очереди */
-  private pendingSeek = 0
-  private restoredTime = 0
   private shuffled = false
 
   private opts: EngineOptions = { crossfadeSec: 0, normalization: true, volume: 0.85 }
@@ -223,7 +221,7 @@ export class AudioEngine {
    * позицию, но звук не включаем. Поток подгрузится по кнопке play и начнётся
    * с того же места.
    */
-  restore(tracks: Track[], index: number, shuffled: boolean, timeSec = 0): void {
+  restore(tracks: Track[], index: number, shuffled: boolean): void {
     if (!tracks.length) return
     this.queue = tracks
     this.index = Math.max(0, Math.min(index, tracks.length - 1))
@@ -231,8 +229,6 @@ export class AudioEngine {
     this.shuffled = Boolean(shuffled)
     this.shuffleTail = null
     this.playing = false
-    this.pendingSeek = Math.max(0, timeSec)
-    this.restoredTime = Math.max(0, timeSec)
     this.emitQueue()
   }
 
@@ -242,8 +238,6 @@ export class AudioEngine {
     this.index = -1
     this.shuffled = false
     this.shuffleTail = null
-    this.pendingSeek = 0
-    this.restoredTime = 0
     this.playing = false
     for (let i = 0; i < 2; i++) this.clearSlot(i)
     this.handlers.onTrackChange(null)
@@ -523,11 +517,7 @@ export class AudioEngine {
       }
     }
 
-    // после восстановления начинаем с сохранённой секунды, а не с нуля
-    const resumeAt = this.pendingSeek || this.restoredTime
-    this.pendingSeek = 0
-    this.restoredTime = 0
-    el.currentTime = resumeAt > 0 ? Math.min(resumeAt, (track.durationSec ?? resumeAt) - 1) : 0
+    el.currentTime = 0
     this.normDb = 0
     this.handlers.onTrackChange(this.displayOf(track))
 
@@ -813,7 +803,7 @@ export class AudioEngine {
     if (el.src && this.playing) this.applyNormalization()
 
     const duration = Number.isFinite(el.duration) ? el.duration : (this.queue[this.index]?.durationSec ?? 0)
-    const time = el.src ? el.currentTime || 0 : this.restoredTime
+    const time = el.src ? el.currentTime || 0 : 0
     const remain = duration - el.currentTime
 
     if (!this.switching && this.queue[this.index + 1] && el.src && this.playing) {

@@ -23,13 +23,10 @@ export function registerIpc(): void {
   ipcMain.handle('queue:get', async () => queueStore.load())
   ipcMain.handle(
     'queue:save',
-    async (_e, state: { tracks: Track[]; index: number; shuffled: boolean; time?: number }) => {
+    async (_e, state: { tracks: Track[]; index: number; shuffled: boolean }) => {
       queueStore.save(state ?? { tracks: [], index: 0, shuffled: false })
     }
   )
-  ipcMain.handle('queue:time', async (_e, index: number, time: number) => {
-    queueStore.touch(Number(index) || 0, Number(time) || 0)
-  })
   ipcMain.handle('queue:clear', async () => queueStore.clear())
 
   ipcMain.handle('flow:start', async (_e, genre?: string) => providers.flowStart(genre))

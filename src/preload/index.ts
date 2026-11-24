@@ -4,7 +4,6 @@ const api = {
   home: () => ipcRenderer.invoke('home'),
   queueGet: () => ipcRenderer.invoke('queue:get'),
   queueSave: (state: unknown) => ipcRenderer.invoke('queue:save', state),
-  queueTime: (index: number, time: number) => ipcRenderer.invoke('queue:time', index, time),
   queueClear: () => ipcRenderer.invoke('queue:clear'),
   flowStart: (genre?: string) => ipcRenderer.invoke('flow:start', genre),
   flowGenres: () => ipcRenderer.invoke('flow:genres'),
