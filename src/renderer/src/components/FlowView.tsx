@@ -62,7 +62,11 @@ export default function FlowView({
         setSeeds(list)
         setSeedRefs(flow.seeds)
         setGenreList(genres.items)
-        setGenre((prev) => prev ?? flow.genre)
+        // приоритет: выбор в этой сессии → жанр активного потока → сохранённый
+        setGenre((prev) => {
+          const candidate = prev ?? flow.genre ?? genres.genre
+          return candidate && genres.items.some((g) => g.id === candidate) ? candidate : undefined
+        })
       } catch {
         /* без библиотеки — пусто */
       } finally {

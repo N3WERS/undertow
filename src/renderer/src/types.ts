@@ -145,7 +145,10 @@ export interface UndertowApi {
     seeds: { id?: string; name: string; coverUrl?: string }[]
     tracks: Track[]
   }>
-  flowGenres(): Promise<{ items: { id: string; name: string; artists: number; weight: number }[] }>
+  flowGenres(): Promise<{
+    items: { id: string; name: string; artists: number; weight: number }[]
+    genre?: string
+  }>
   flowMore(): Promise<Track[]>
   flowInfo(): Promise<{
     active: boolean

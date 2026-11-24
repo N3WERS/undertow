@@ -190,18 +190,22 @@ export async function likeTrack(track: Track, liked: boolean): Promise<LikeResul
 
 /* -------------------------------- течение -------------------------------- */
 
-export function flowStart(genre?: string): Promise<{
+export async function flowStart(genre?: string): Promise<{
   title: string
   seeds: { id?: string; name: string; coverUrl?: string }[]
   tracks: Track[]
 }> {
-  return flow.start(typeof genre === 'string' && genre ? genre : undefined)
+  const id = typeof genre === 'string' && genre ? genre : undefined
+  const result = await flow.start(id)
+  // запоминаем только после удачного запуска, чтобы ошибка не сбивала выбор
+  recPrefs.setFlowGenre(id)
+  return result
 }
 
 /** Жанры библиотеки для чипов «Течения» (тегирование — при первом вызове). */
-export async function flowGenres(): Promise<{ items: genres.GenreInfo[] }> {
+export async function flowGenres(): Promise<{ items: genres.GenreInfo[]; genre?: string }> {
   await genres.ensure().catch(() => undefined)
-  return { items: genres.list() }
+  return { items: genres.list(), genre: recPrefs.flowGenre() }
 }
 
 export function flowMore(): Promise<Track[]> {

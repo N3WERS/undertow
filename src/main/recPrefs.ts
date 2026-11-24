@@ -11,6 +11,8 @@ import path from 'node:path'
 interface Prefs {
   version: 1
   hidden: string[]
+  /** последний жанр «Течения»: только чтобы подсветить чип при следующем запуске */
+  flowGenre?: string
 }
 
 const FILE_VERSION = 1 as const
@@ -27,7 +29,8 @@ function load(): Prefs {
     const parsed = JSON.parse(fs.readFileSync(file(), 'utf8')) as Partial<Prefs>
     cache = {
       version: FILE_VERSION,
-      hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter((x) => typeof x === 'string') : []
+      hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter((x) => typeof x === 'string') : [],
+      flowGenre: typeof parsed.flowGenre === 'string' && parsed.flowGenre ? parsed.flowGenre : undefined
     }
   } catch {
     cache = { version: FILE_VERSION, hidden: [] }
@@ -48,6 +51,20 @@ function save(next: Prefs): void {
 
 export function hidden(): string[] {
   return [...load().hidden]
+}
+
+/* ------------------------------ жанр течения ------------------------------ */
+
+export function flowGenre(): string | undefined {
+  return load().flowGenre
+}
+
+/** `null`/пустая строка — сбросить («всё»). */
+export function setFlowGenre(id?: string | null): void {
+  const next = typeof id === 'string' && id ? id : undefined
+  const current = load()
+  if (current.flowGenre === next) return
+  save({ ...current, flowGenre: next })
 }
 
 export function hide(sectionId: string): string[] {
