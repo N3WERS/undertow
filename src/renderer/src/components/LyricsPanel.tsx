@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Lyrics, Track } from '../types'
 import { IconX } from './Icons'
 import { useProgress } from '../audio/progress'
+import { usePanelOrigin } from './usePanelOrigin'
 
 interface Props {
   track: Track | null
@@ -17,6 +18,8 @@ export default function LyricsPanel({ track, shifted, onSeek, onClose }: Props) 
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  usePanelOrigin(panelRef, '.tool-btn[aria-label="Текст песни"]')
 
   useEffect(() => {
     if (!track) return
@@ -53,7 +56,7 @@ export default function LyricsPanel({ track, shifted, onSeek, onClose }: Props) 
   if (!track) return null
 
   return (
-    <div className={`lyrics-panel${shifted ? ' shifted' : ''}`}>
+    <div className={`lyrics-panel${shifted ? ' shifted' : ''}`} ref={panelRef}>
       <div className="lyrics-head">
         {track.coverUrl ? (
           <img className="lyrics-cover" src={track.coverUrl} alt="" />

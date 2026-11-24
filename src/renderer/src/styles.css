@@ -4958,3 +4958,38 @@ img {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ------------------- раскрытие панелей из кнопок плеера ------------------- */
+/* Как окно из дока: панель масштабируется из своей иконки, проявляется
+   из размытия и мягко «расплывается» в финальный размер. */
+@keyframes panelSpawn {
+  0% {
+    opacity: 0;
+    transform: scale(0.58);
+    filter: blur(10px);
+  }
+  55% {
+    opacity: 1;
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+.queue-panel,
+.lyrics-panel,
+.versions-menu {
+  animation: panelSpawn 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: calc(100% - var(--panel-origin-right, 70px))
+    calc(100% + var(--panel-origin-below, 40px));
+  will-change: transform, opacity, filter;
+}
+@media (prefers-reduced-motion: reduce) {
+  .queue-panel,
+  .lyrics-panel,
+  .versions-menu {
+    animation: none;
+  }
+}

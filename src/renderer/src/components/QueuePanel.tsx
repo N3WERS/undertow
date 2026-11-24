@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Track } from '../types'
 import { fmtTime } from './TrackList'
 import { IconClose, IconShuffle, IconTrash, IconWave } from './Icons'
+import { usePanelOrigin } from './usePanelOrigin'
 
 interface Props {
   queue: Track[]
@@ -35,12 +36,14 @@ export default function QueuePanel({
 }: Props) {
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [overAt, setOverAt] = useState<number | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  usePanelOrigin(panelRef, '.queue-btn')
 
   const remaining = Math.max(0, queue.length - index - 1)
   const current = index >= 0 ? queue[index] : null
 
   return (
-    <div className="queue-panel">
+    <div className="queue-panel" ref={panelRef}>
       <div className="queue-head">
         <span className={`panel-art${current?.coverUrl ? '' : ' empty'}`}>
           {current?.coverUrl ? (

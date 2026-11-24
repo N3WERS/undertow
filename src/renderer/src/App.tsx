@@ -990,6 +990,7 @@ export default function App() {
           if (versions) setVersions(null)
           else {
             setQueueOpen(false)
+            setLyricsOpen(false)
             void openVersions()
           }
         }}
@@ -1013,11 +1014,20 @@ export default function App() {
         queueCount={queueState.queue.length}
         queueOpen={queueOpen}
         onToggleQueue={() => {
-          setQueueOpen((v) => !v)
-          setVersions(null)
+          if (!queueOpen) {
+            setVersions(null)
+            setLyricsOpen(false)
+          }
+          setQueueOpen(!queueOpen)
         }}
         lyricsOpen={lyricsOpen}
-        onToggleLyrics={() => setLyricsOpen((v) => !v)}
+        onToggleLyrics={() => {
+          if (!lyricsOpen) {
+            setQueueOpen(false)
+            setVersions(null)
+          }
+          setLyricsOpen(!lyricsOpen)
+        }}
         hasLyrics={hasLyrics}
       />
 

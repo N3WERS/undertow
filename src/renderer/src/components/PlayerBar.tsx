@@ -3,6 +3,7 @@ import type { Track, TrackVersion } from '../types'
 import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
 import ArtistLine from './ArtistLine'
+import { usePanelOrigin } from './usePanelOrigin'
 import {
   IconHeart,
   IconLayers,
@@ -59,7 +60,9 @@ interface Props {
 
 export default function PlayerBar(p: Props) {
   const barRef = useRef<HTMLDivElement>(null)
+  const versionsRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState<string | null>(null)
+  usePanelOrigin(versionsRef, '.alt-btn', Boolean(p.versions))
 
   // список версий сменился (другой трек или новая загрузка) — фильтр сбрасываем
   useEffect(() => setFilter(null), [p.versions, p.track?.id])
@@ -259,7 +262,7 @@ export default function PlayerBar(p: Props) {
                 ) : null}
               </button>
             {p.versions ? (
-              <div className="alt-menu versions-menu">
+              <div className="alt-menu versions-menu" ref={versionsRef}>
                 <div className="alt-head">
                   <span className={`panel-art${p.track.coverUrl ? '' : ' empty'}`}>
                     {p.track.coverUrl ? (
