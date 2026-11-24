@@ -562,6 +562,21 @@ export async function artistAlbums(
     }))
 }
 
+/**
+ * Жанровые слаги артиста (`foreignrap`, `rusrap`, `rock`…). Используются
+ * только как подсказка для «Течения по жанрам» — показываем всё равно
+ * нормальные названия из genres.ts.
+ */
+export async function artistGenres(token: string, artistId: string): Promise<string[]> {
+  const data = await call<{ result?: { artist?: { genres?: unknown } } }>(
+    `/artists/${artistId}`,
+    token,
+    10000
+  )
+  const genres = data?.result?.artist?.genres
+  return Array.isArray(genres) ? genres.filter((g): g is string => typeof g === 'string') : []
+}
+
 /* ------------------------- страницы артиста/альбома ----------------------- */
 
 interface YmArtistInfo {

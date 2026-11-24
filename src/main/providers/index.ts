@@ -18,6 +18,7 @@ import * as recPrefs from '../recPrefs'
 import * as radio from '../radio'
 import * as browse from '../browse'
 import * as flow from '../flow'
+import * as genres from '../genres'
 import type { BrowsePage, ResolvedStream, Section, Track } from './types'
 
 export interface ProviderState {
@@ -189,19 +190,29 @@ export async function likeTrack(track: Track, liked: boolean): Promise<LikeResul
 
 /* -------------------------------- течение -------------------------------- */
 
-export function flowStart(): Promise<{
+export function flowStart(genre?: string): Promise<{
   title: string
   seeds: { id?: string; name: string; coverUrl?: string }[]
   tracks: Track[]
 }> {
-  return flow.start()
+  return flow.start(typeof genre === 'string' && genre ? genre : undefined)
+}
+
+/** Жанры библиотеки для чипов «Течения» (тегирование — при первом вызове). */
+export async function flowGenres(): Promise<{ items: genres.GenreInfo[] }> {
+  await genres.ensure().catch(() => undefined)
+  return { items: genres.list() }
 }
 
 export function flowMore(): Promise<Track[]> {
   return flow.more()
 }
 
-export function flowInfo(): { active: boolean; seeds: { id?: string; name: string; coverUrl?: string }[] } {
+export function flowInfo(): {
+  active: boolean
+  seeds: { id?: string; name: string; coverUrl?: string }[]
+  genre?: string
+} {
   return flow.info()
 }
 

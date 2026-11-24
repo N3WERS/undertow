@@ -2,6 +2,7 @@ import type { Track } from './providers/types'
 import { snapshot } from './library'
 import { artistWeights } from './browse'
 import * as youtube from './providers/youtube'
+import * as genres from './genres'
 
 /**
  * «Течение» — бесконечный поток рекомендаций по библиотеке.
@@ -52,6 +53,8 @@ interface Session {
   ring: number
   /** с какого пула начинать круг: порядок артистов не должен повторяться */
   cursor: number
+  /** выбранный жанр (id корзины) или undefined — «всё» */
+  genre?: string
 }
 
 let session: Session | null = null
@@ -112,6 +115,16 @@ function shuffle<T>(list: T[]): T[] {
     ;[list[i], list[j]] = [list[j], list[i]]
   }
   return list
+}
+
+/**
+ * Пропускать ли артиста в жанровый поток: своих (помеченных другим жанром)
+ * отсекаем, неизвестных пускаем — они соседи по графу и почти всегда в тему,
+ * а теги для всех соседей тянуть слишком дорого.
+ */
+function keepArtist(s: Session, name: string): boolean {
+  if (!s.genre) return true
+  return !genres.known(name) || genres.matches(name, s.genre)
 }
 
 function poolsFrom(
@@ -198,7 +211,13 @@ async function expand(s: Session): Promise<boolean> {
   const seen = new Set<string>()
   const candidates = profiles
     .flatMap((p) => p?.related ?? [])
-    .filter((r) => !session?.known.has(r.id) && !seen.has(r.id) && (seen.add(r.id), true))
+    .filter(
+      (r) =>
+        !session?.known.has(r.id) &&
+        !seen.has(r.id) &&
+        (!session || keepArtist(session, r.name)) &&
+        (seen.add(r.id), true)
+    )
     .slice(0, RING2_PICKS)
   if (!candidates.length || !session) return false
   for (const c of candidates) session.known.add(c.id)
@@ -217,13 +236,29 @@ async function expand(s: Session): Promise<boolean> {
   return true
 }
 
-/** Запуск: библиотека → любимые артисты → соседи → пулы. */
-export async function start(): Promise<{ title: string; seeds: SeedRef[]; tracks: Track[] }> {
+/**
+ * Запуск: библиотека → любимые артисты → соседи → пулы.
+ * С `genre` (id корзины) семена ограничены этим жанром.
+ */
+export async function start(
+  genre?: string
+): Promise<{ title: string; seeds: SeedRef[]; tracks: Track[] }> {
   const lib = snapshot()
-  const weights = artistWeights()
-  if (weights.length < 2) {
+  let weights = artistWeights()
+  if (genre) {
+    await genres.ensure().catch(() => undefined)
+    const tagged = weights.filter((w) => genres.matches(w.name, genre))
+    if (!tagged.length) {
+      throw new Error(`В жанре «${genres.nameOf(genre)}» пока мало ваших артистов — выберите другой`)
+    }
+    weights = tagged
+  }
+  if (weights.length < (genre ? 1 : 2)) {
     throw new Error('В библиотеке мало артистов: лайкните несколько треков, и течение соберётся')
   }
+  /** соседи: чужих по жанру отсекаем, неизвестных пускаем */
+  const pass = (name: string): boolean =>
+    !genre || !genres.known(name) || genres.matches(name, genre)
 
   // порядок семян тоже перемешиваем: соседи собираются с первых профилей,
   // и фиксированный порядок всегда вёл в окружение одного и того же артиста
@@ -239,6 +274,7 @@ export async function start(): Promise<{ title: string; seeds: SeedRef[]; tracks
   for (const p of good) {
     known.add(p.id)
     for (const r of p.related) {
+      if (!pass(r.name)) continue
       if (known.has(r.id) || neighbours.some((n) => n.id === r.id)) continue
       neighbours.push({ id: r.id, name: r.name })
       if (neighbours.length >= NEIGHBOURS) break
@@ -277,7 +313,8 @@ export async function start(): Promise<{ title: string; seeds: SeedRef[]; tracks
     shelf,
     sinceLibrary: LIBRARY_GAP,
     ring: 1,
-    cursor: Math.floor(Math.random() * Math.max(1, pools.length))
+    cursor: Math.floor(Math.random() * Math.max(1, pools.length)),
+    genre
   }
   session = sess
 
@@ -291,7 +328,11 @@ export async function start(): Promise<{ title: string; seeds: SeedRef[]; tracks
   }
   if (tracks.length) lastOpenedArtist = artistOf(tracks[0]).toLowerCase()
   tracks = await youtube.fillYears(tracks, 8).catch(() => tracks)
-  return { title: 'Течение', seeds: sess.seeds, tracks }
+  return {
+    title: genre ? `Течение · ${genres.nameOf(genre)}` : 'Течение',
+    seeds: sess.seeds,
+    tracks
+  }
 }
 
 /** Дозаправка: сначала остатки пулов, потом второй круг соседей. */
@@ -304,8 +345,8 @@ export async function more(): Promise<Track[]> {
   return [...batch, ...(await youtube.fillYears(draw(session, REFILL - batch.length), 5))]
 }
 
-export function info(): { active: boolean; seeds: SeedRef[] } {
-  return { active: Boolean(session), seeds: session?.seeds ?? [] }
+export function info(): { active: boolean; seeds: SeedRef[]; genre?: string } {
+  return { active: Boolean(session), seeds: session?.seeds ?? [], genre: session?.genre }
 }
 
 /** Список артистов для «откуда течёт» — без сетевых запросов. */

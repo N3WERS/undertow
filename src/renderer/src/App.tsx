@@ -551,15 +551,19 @@ export default function App() {
     [playTrack, toast]
   )
 
-  const startFlow = useCallback(async () => {
+  const startFlow = useCallback(async (genre?: string) => {
     setFlowLoading(true)
     try {
-      const flow = await window.undertow.flowStart()
+      const flow = await window.undertow.flowStart(genre)
       if (!flow.tracks.length) throw new Error('Не удалось собрать поток')
       playTrack(flow.tracks[0], flow.tracks)
       flowRef.current = true
       setFlowActive(true)
-      toast(`Течение: ${flow.tracks.length} треков, дальше подмешается само`)
+      toast(
+        genre
+          ? `Течение: ${genre} — ${flow.tracks.length} треков`
+          : `Течение: ${flow.tracks.length} треков, дальше подмешается само`
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
@@ -837,7 +841,7 @@ export default function App() {
               playing={snap.playing}
               active={flowActive}
               loading={flowLoading}
-              onStart={() => void startFlow()}
+              onStart={(genre) => void startFlow(genre)}
               onPlay={playTrack}
               onToggle={toggle}
               onArtistRadio={(name) => void startRadio({ name })}

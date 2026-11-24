@@ -29,7 +29,8 @@ export function registerIpc(): void {
   })
   ipcMain.handle('queue:clear', async () => queueStore.clear())
 
-  ipcMain.handle('flow:start', async () => providers.flowStart())
+  ipcMain.handle('flow:start', async (_e, genre?: string) => providers.flowStart(genre))
+  ipcMain.handle('flow:genres', async () => providers.flowGenres())
   ipcMain.handle('flow:more', async () => providers.flowMore())
   ipcMain.handle('flow:info', async () => providers.flowInfo())
   ipcMain.handle('flow:seeds', async () => providers.flowSeeds())

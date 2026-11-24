@@ -140,9 +140,18 @@ export interface UndertowApi {
   queueSave(state: { tracks: Track[]; index: number; shuffled: boolean; time?: number }): Promise<void>
   queueTime(index: number, time: number): Promise<void>
   queueClear(): Promise<void>
-  flowStart(): Promise<{ title: string; seeds: { id?: string; name: string; coverUrl?: string }[]; tracks: Track[] }>
+  flowStart(genre?: string): Promise<{
+    title: string
+    seeds: { id?: string; name: string; coverUrl?: string }[]
+    tracks: Track[]
+  }>
+  flowGenres(): Promise<{ items: { id: string; name: string; artists: number; weight: number }[] }>
   flowMore(): Promise<Track[]>
-  flowInfo(): Promise<{ active: boolean; seeds: { id?: string; name: string; coverUrl?: string }[] }>
+  flowInfo(): Promise<{
+    active: boolean
+    seeds: { id?: string; name: string; coverUrl?: string }[]
+    genre?: string
+  }>
   flowSeeds(): Promise<{ name: string; weight: number }[]>
   artistRadio(ref: { id?: string; name?: string }): Promise<{ title: string; tracks: Track[] }>
   radioMore(ref: { id?: string; name?: string }): Promise<Track[]>

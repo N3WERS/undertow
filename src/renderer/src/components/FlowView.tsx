@@ -9,7 +9,7 @@ interface Props {
   playing: boolean
   active: boolean
   loading: boolean
-  onStart: () => void
+  onStart: (genre?: string) => void
   onPlay: (track: Track, list: Track[]) => void
   onToggle: () => void
   onArtistRadio: (name: string) => void
@@ -44,23 +44,42 @@ export default function FlowView({
 }: Props) {
   const [seeds, setSeeds] = useState<{ name: string; weight: number }[]>([])
   const [seedRefs, setSeedRefs] = useState<{ id?: string; name: string; coverUrl?: string }[]>([])
+  const [genreList, setGenreList] = useState<{ id: string; name: string; artists: number }[]>([])
+  const [genresLoading, setGenresLoading] = useState(true)
+  /** выбранный жанр: только в памяти страницы, между запусками не помним */
+  const [genre, setGenre] = useState<string | undefined>()
 
   useEffect(() => {
     let alive = true
     void (async () => {
       try {
-        const [list, flow] = await Promise.all([window.undertow.flowSeeds(), window.undertow.flowInfo()])
+        const [list, flow, genres] = await Promise.all([
+          window.undertow.flowSeeds(),
+          window.undertow.flowInfo(),
+          window.undertow.flowGenres()
+        ])
         if (!alive) return
         setSeeds(list)
         setSeedRefs(flow.seeds)
+        setGenreList(genres.items)
+        setGenre((prev) => prev ?? flow.genre)
       } catch {
         /* без библиотеки — пусто */
+      } finally {
+        if (alive) setGenresLoading(false)
       }
     })()
     return () => {
       alive = false
     }
   }, [active])
+
+  const genreName = genreList.find((g) => g.id === genre)?.name
+  const chooseGenre = (id?: string): void => {
+    if (loading) return
+    setGenre(id)
+    onStart(id)
+  }
 
   const alive = active && playing
   const heroRef = useRef<HTMLElement>(null)
@@ -150,8 +169,41 @@ export default function FlowView({
             запас пополняется сам, пока играет музыка, а треки из вашей библиотеки туда почти
             не попадают.
           </p>
+
+          <div className="flow-genres" role="group" aria-label="Жанр течения">
+            {genresLoading && !genreList.length ? (
+              <>
+                <span className="flow-genre skeleton" />
+                <span className="flow-genre skeleton" />
+                <span className="flow-genre skeleton" />
+              </>
+            ) : (
+              <>
+                <button
+                  className={`flow-genre${genre ? '' : ' on'}`}
+                  onClick={() => chooseGenre(undefined)}
+                  disabled={loading}
+                >
+                  всё
+                </button>
+                {genreList.map((g) => (
+                  <button
+                    key={g.id}
+                    className={`flow-genre${genre === g.id ? ' on' : ''}`}
+                    onClick={() => chooseGenre(g.id)}
+                    disabled={loading}
+                    title={`${g.artists} артистов в библиотеке`}
+                  >
+                    {g.name}
+                    <i>{g.artists}</i>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+
           <div className="flow-actions">
-            <button className="play-btn" onClick={onStart} disabled={loading}>
+            <button className="play-btn" onClick={() => onStart(genre)} disabled={loading}>
               <IconPlay width={15} height={15} />
               {loading ? 'собираю…' : active ? 'Собрать заново' : 'Запустить'}
             </button>
@@ -177,7 +229,10 @@ export default function FlowView({
           <div className="flow-now">
             {current.coverUrl ? <img className="flow-now-cover" src={current.coverUrl} alt="" /> : <div className="flow-now-cover" />}
             <div className="flow-now-meta">
-              <span className="flow-now-label">сейчас играет</span>
+              <span className="flow-now-label">
+                сейчас играет
+                {genreName ? <span className="flow-genre-tag"> · {genreName}</span> : null}
+              </span>
               <div className="flow-now-title">{current.title}</div>
               <div className="flow-now-artist">
                 {current.artist}
