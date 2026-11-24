@@ -4781,3 +4781,189 @@ img {
 .lyrics-line.on {
   box-shadow: inset 2px 0 var(--accent);
 }
+
+/* ------------- окна версий и очереди в стиле окна текста ----------------- */
+.queue-panel,
+.versions-menu {
+  background: linear-gradient(180deg, #101923 0%, #0a1017 100%);
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(55, 214, 207, 0.04);
+}
+.queue-panel::before,
+.versions-menu::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(55, 214, 207, 0.72),
+    rgba(111, 140, 255, 0.5),
+    transparent
+  );
+  z-index: 3;
+  pointer-events: none;
+}
+.queue-head,
+.alt-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 11px 12px 10px 13px;
+  flex: none;
+  background:
+    radial-gradient(120% 170% at 8% 0, rgba(55, 214, 207, 0.13), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent);
+  border-bottom: 1px solid var(--line);
+}
+.alt-head {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.panel-art {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.32);
+  color: var(--text-mute);
+}
+.panel-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.panel-art.empty {
+  background: linear-gradient(135deg, rgba(55, 214, 207, 0.2), rgba(111, 140, 255, 0.12));
+  color: rgba(230, 252, 250, 0.78);
+}
+.panel-head-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.panel-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.panel-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 8px;
+}
+.panel-bars i {
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: lyricsBars 1.7s ease-in-out infinite;
+}
+.panel-bars i:nth-child(1) {
+  height: 4px;
+}
+.panel-bars i:nth-child(2) {
+  height: 7px;
+  animation-delay: -0.5s;
+}
+.panel-bars i:nth-child(3) {
+  height: 5px;
+  animation-delay: -1s;
+}
+.panel-head-text b {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.panel-head-text > span:last-child {
+  min-width: 0;
+  font-size: 10.8px;
+  color: var(--text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-head .queue-actions {
+  flex: none;
+  gap: 5px;
+}
+.queue-head .panel-head-text {
+  margin-right: 2px;
+}
+.queue-head .queue-shuffle {
+  padding: 4px 7px;
+}
+
+/* версии: шапка закреплена, прокручивается только список */
+.versions-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.alt-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+.alt-body::-webkit-scrollbar {
+  width: 8px;
+}
+.alt-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.alt-body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+  background-clip: content-box;
+}
+.alt-body::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+.versions-menu .alt-chips {
+  background: rgba(14, 21, 30, 0.96);
+  backdrop-filter: blur(8px);
+}
+
+.queue-head .queue-shuffle {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+}
+.queue-head .queue-shuffle span {
+  display: none;
+}
+.queue-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

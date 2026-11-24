@@ -15,7 +15,8 @@ import {
   IconQueue,
   IconText,
   IconVolume,
-  IconWave
+  IconWave,
+  IconX
 } from './Icons'
 
 interface Props {
@@ -261,9 +262,33 @@ export default function PlayerBar(p: Props) {
             {p.versions ? (
               <div className="alt-menu versions-menu">
                 <div className="alt-head">
-                  Версии трека
-                  <span className="alt-head-note">ремиксы, каверы, переделки</span>
+                  <span className={`panel-art${p.track.coverUrl ? '' : ' empty'}`}>
+                    {p.track.coverUrl ? (
+                      <img src={p.track.coverUrl} alt="" />
+                    ) : (
+                      <IconLayers width={18} height={18} />
+                    )}
+                  </span>
+                  <div className="panel-head-text">
+                    <span className="panel-kicker">
+                      Версии трека
+                      <span className="panel-bars" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    </span>
+                    <b>{p.track.title}</b>
+                    <span>
+                      {p.track.artist} ·{' '}
+                      {p.versions.loading ? 'ищу варианты…' : `всего ${p.versions.list.length}`}
+                    </span>
+                  </div>
+                  <button className="icon-btn" onClick={p.onVersions} title="Закрыть версии">
+                    <IconX width={14} height={14} />
+                  </button>
                 </div>
+                <div className="alt-body">
                 {p.copyLabel ? (
                   <button className="alt-item alt-restore" onClick={p.onRestoreOriginal}>
                     <span className="alt-title">↩ вернуть исходную запись</span>
@@ -328,6 +353,7 @@ export default function PlayerBar(p: Props) {
                     )}
                   </>
                 )}
+                </div>
               </div>
             ) : null}
           </div>

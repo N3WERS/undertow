@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Track } from '../types'
 import { fmtTime } from './TrackList'
-import { IconClose, IconShuffle, IconTrash } from './Icons'
+import { IconClose, IconShuffle, IconTrash, IconWave } from './Icons'
 
 interface Props {
   queue: Track[]
@@ -37,12 +37,28 @@ export default function QueuePanel({
   const [overAt, setOverAt] = useState<number | null>(null)
 
   const remaining = Math.max(0, queue.length - index - 1)
+  const current = index >= 0 ? queue[index] : null
 
   return (
     <div className="queue-panel">
       <div className="queue-head">
-        <div className="queue-title">
-          Очередь
+        <span className={`panel-art${current?.coverUrl ? '' : ' empty'}`}>
+          {current?.coverUrl ? (
+            <img src={current.coverUrl} alt="" />
+          ) : (
+            <IconWave width={18} height={18} />
+          )}
+        </span>
+        <div className="panel-head-text queue-head-text">
+          <span className="panel-kicker">
+            Очередь
+            <span className="panel-bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </span>
+          <b>{current ? current.title : 'Пока пусто'}</b>
           <span className="queue-count">
             {index >= 0 ? `${remaining} дальше · ${queue.length} всего` : `${queue.length} треков`}
           </span>
@@ -116,7 +132,7 @@ export default function QueuePanel({
                 <span className="queue-text">
                   <span className="queue-name">
                     {current ? <span className={`eq small${playing ? '' : ' paused'}`}><i /><i /><i /></span> : null}
-                    {t.title}
+                    <span className="queue-name-text">{t.title}</span>
                   </span>
                   <span className="queue-artist">
                     {t.artist}

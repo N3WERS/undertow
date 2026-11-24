@@ -994,7 +994,13 @@ export default function App() {
         source={source}
         copyLabel={copyLabel}
         versions={versions}
-        onVersions={() => (versions ? setVersions(null) : void openVersions())}
+        onVersions={() => {
+          if (versions) setVersions(null)
+          else {
+            setQueueOpen(false)
+            void openVersions()
+          }
+        }}
         onPickVersion={pickVersion}
         onAddVersion={addVersion}
         onPlayOriginal={playOriginalVersion}
@@ -1015,7 +1021,10 @@ export default function App() {
         onOpenAlbum={openAlbum}
         queueCount={queueState.queue.length}
         queueOpen={queueOpen}
-        onToggleQueue={() => setQueueOpen((v) => !v)}
+        onToggleQueue={() => {
+          setQueueOpen((v) => !v)
+          setVersions(null)
+        }}
         lyricsOpen={lyricsOpen}
         onToggleLyrics={() => setLyricsOpen((v) => !v)}
         hasLyrics={hasLyrics}
