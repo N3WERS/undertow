@@ -149,29 +149,13 @@ img {
   grid-template-rows: var(--titlebar) 1fr var(--player);
   height: 100%;
   background:
-    radial-gradient(1020px 620px at 20% -18%, rgba(55, 214, 207, 0.105), transparent 68%),
-    radial-gradient(900px 720px at 28% 44%, rgba(55, 214, 207, 0.06), transparent 72%),
-    radial-gradient(760px 520px at -6% 96%, rgba(52, 211, 153, 0.06), transparent 68%),
-    radial-gradient(920px 580px at 102% -2%, rgba(139, 92, 246, 0.054), transparent 68%),
-    radial-gradient(980px 680px at 6% 112%, rgba(52, 211, 153, 0.052), transparent 70%),
-    radial-gradient(920px 660px at 100% 76%, rgba(139, 92, 246, 0.042), transparent 70%),
-    linear-gradient(135deg, #081312 0%, #080b11 48%, #0a0c13 100%);
-}
-
-/* На узком окне те же радиальные пятна занимают почти весь экран и фон
-   становится слишком цветным. Приглушаем их и сужаем, чтобы сохранить
-   тёмную основу, как в полноэкранном режиме. */
-@media (max-width: 1180px) {
-  .app {
-    background:
-      radial-gradient(74vw 58vh at 18% -18%, rgba(55, 214, 207, 0.06), transparent 64%),
-      radial-gradient(66vw 52vh at 30% 46%, rgba(55, 214, 207, 0.028), transparent 70%),
-      radial-gradient(64vw 48vh at -8% 102%, rgba(52, 211, 153, 0.038), transparent 68%),
-      radial-gradient(70vw 54vh at 104% -6%, rgba(139, 92, 246, 0.034), transparent 68%),
-      radial-gradient(70vw 56vh at 102% 74%, rgba(139, 92, 246, 0.026), transparent 70%),
-      radial-gradient(64vw 50vh at 96% 108%, rgba(111, 140, 255, 0.028), transparent 68%),
-      linear-gradient(135deg, #080f10 0%, #080b11 52%, #0a0b12 100%);
-  }
+    radial-gradient(74vw 58vh at 18% -18%, rgba(55, 214, 207, 0.06), transparent 64%),
+    radial-gradient(66vw 52vh at 30% 46%, rgba(55, 214, 207, 0.028), transparent 70%),
+    radial-gradient(64vw 48vh at -8% 102%, rgba(52, 211, 153, 0.038), transparent 68%),
+    radial-gradient(70vw 54vh at 104% -6%, rgba(139, 92, 246, 0.034), transparent 68%),
+    radial-gradient(70vw 56vh at 102% 74%, rgba(139, 92, 246, 0.026), transparent 70%),
+    radial-gradient(64vw 50vh at 96% 108%, rgba(111, 140, 255, 0.028), transparent 68%),
+    linear-gradient(135deg, #080f10 0%, #080b11 52%, #0a0b12 100%);
 }
 
 .titlebar {
