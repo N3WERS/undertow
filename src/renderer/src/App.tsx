@@ -14,6 +14,8 @@ import PlaylistPicker from './components/PlaylistPicker'
 import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import NowPlaying from './components/NowPlaying'
+import MiniPlayer from './components/MiniPlayer'
+import { IconShrink } from './components/Icons'
 import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
@@ -87,11 +89,36 @@ export default function App() {
   })
   const [queueOpen, setQueueOpen] = useState(false)
   const [repeat, setRepeat] = useState<RepeatMode>('off')
+  const [mini, setMini] = useState(false)
   const [theaterOpen, setTheaterOpen] = useState(false)
   const [resolving, setResolving] = useState(false)
   useEffect(() => {
     if (!track && theaterOpen) setTheaterOpen(false)
   }, [track, theaterOpen])
+
+  useEffect(() => {
+    let alive = true
+    void window.undertow
+      .miniState()
+      .then((on) => {
+        if (alive) setMini(on)
+      })
+      .catch(() => undefined)
+    const off = window.undertow.onMiniChange((on) => setMini(on))
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!mini) return
+    setTheaterOpen(false)
+    setQueueOpen(false)
+    setLyricsOpen(false)
+    setVersions(null)
+    setPickerTrack(null)
+  }, [mini])
   const [volume, setVolume] = useState(() => readNum('undertow.volume', 0.85))
   const [crossfade, setCrossfade] = useState(() => readNum('undertow.crossfade', 0))
   const [normalize, setNormalize] = useState(() => localStorage.getItem('undertow.normalize') !== '0')
@@ -757,6 +784,25 @@ export default function App() {
     else void engineRef.current?.prev()
   }, [])
 
+  useEffect(
+    () =>
+      window.undertow.onPlayerCommand((command) => {
+        if (command === 'toggle') toggle()
+        else if (command === 'next') go(1)
+        else go(-1)
+      }),
+    [toggle, go]
+  )
+
+  useEffect(() => {
+    window.undertow.reportPlayer({
+      playing: snap.playing,
+      title: track?.title ?? null,
+      artist: track?.artist ?? null,
+      source
+    })
+  }, [snap.playing, track?.id, track?.title, track?.artist, source])
+
   /* ------------------- подмена на YouTube: прогрев и варианты ------------------ */
 
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -914,7 +960,7 @@ export default function App() {
         : 'yt-dlp не найден'
 
   return (
-    <div className={`app${theaterOpen ? ' theater-on' : ''}`}>
+    <div className={`app${theaterOpen ? ' theater-on' : ''}${mini ? ' mini-on' : ''}`}>
       <header className="titlebar">
         <div className="brand">
           <img className="brand-mark" src={appIcon} alt="" draggable={false} />
@@ -931,6 +977,14 @@ export default function App() {
           <span className={`dot${state?.youtube.ready || state?.yandex.active ? '' : ' bad'}`} />
           {primaryLabel}
         </span>
+        <button
+          className="titlebar-mini"
+          onClick={() => void window.undertow.setMini(true)}
+          title="Открыть мини-плеер"
+          aria-label="Открыть мини-плеер"
+        >
+          <IconShrink width={15} height={15} />
+        </button>
       </header>
 
       <div className="body">
@@ -1332,6 +1386,34 @@ export default function App() {
         onAdded={(title) => toast(`Добавлено в «${title}»`)}
         onToast={toast}
       />
+
+      {mini ? (
+        <MiniPlayer
+          track={track}
+          playing={snap.playing}
+          resolving={resolving}
+          duration={snap.duration}
+          volume={volume}
+          source={source}
+          quality={quality}
+          queue={queueState.queue}
+          queueIndex={queueState.index}
+          shuffled={queueState.shuffled}
+          repeat={repeat}
+          onToggle={toggle}
+          onNext={() => go(1)}
+          onPrev={() => go(-1)}
+          onSeek={(sec) => {
+            engineRef.current?.seek(sec)
+            setProgress(sec, snap.duration, 0)
+          }}
+          onVolume={setVolume}
+          onPlayAt={(i) => void engineRef.current?.playAt(i)}
+          onShuffle={(on) => engineRef.current?.setShuffle(on)}
+          onCycleRepeat={() => engineRef.current?.cycleRepeat()}
+          onRestore={() => void window.undertow.setMini(false)}
+        />
+      ) : null}
 
       <div className="toasts">
         {toasts.map((t) => (

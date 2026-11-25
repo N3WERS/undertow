@@ -67,6 +67,20 @@ const api = {
   setYandexToken: (token: string) => ipcRenderer.invoke('yandex:set', token),
   clearYandexToken: () => ipcRenderer.invoke('yandex:clear'),
   refreshYandex: () => ipcRenderer.invoke('yandex:refresh'),
+  miniState: () => ipcRenderer.invoke('window:mini-state'),
+  setMini: (on: boolean) => ipcRenderer.invoke('window:mini', on),
+  toggleMini: () => ipcRenderer.invoke('window:mini-toggle'),
+  reportPlayer: (state: unknown) => ipcRenderer.send('player:state', state),
+  onMiniChange: (cb: (on: boolean) => void) => {
+    const handler = (_e: unknown, on: boolean) => cb(on)
+    ipcRenderer.on('window:mini-changed', handler)
+    return () => ipcRenderer.removeListener('window:mini-changed', handler)
+  },
+  onPlayerCommand: (cb: (command: 'toggle' | 'next' | 'prev') => void) => {
+    const handler = (_e: unknown, command: 'toggle' | 'next' | 'prev') => cb(command)
+    ipcRenderer.on('player:command', handler)
+    return () => ipcRenderer.removeListener('player:command', handler)
+  },
   /** прогресс скачивания локальной копии */
   onOfflineProgress: (cb: (progress: unknown) => void) => {
     const handler = (_e: unknown, progress: unknown) => cb(progress)

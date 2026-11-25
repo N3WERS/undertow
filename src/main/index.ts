@@ -1,4 +1,5 @@
-import { app, BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron'
+import type { Rectangle } from 'electron'
 import { join } from 'node:path'
 import { startAudioProxy, setLocalRoot } from './audioProxy'
 import { registerIpc } from './ipc'
@@ -6,8 +7,170 @@ import * as offline from './offline'
 import * as providers from './providers'
 
 const BG = '#070a0e'
+const MINI_BG = '#0b0d12'
+const MINI_W = 460
+const MINI_H = 300
+
+type PlayerCommand = 'toggle' | 'next' | 'prev'
+
+interface PlayerReport {
+  playing: boolean
+  title: string | null
+  artist: string | null
+  source: 'yandex' | 'youtube' | 'local' | null
+}
 
 let win: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+let isMini = false
+let normalBounds: Rectangle | null = null
+let wasMaximized = false
+let player: PlayerReport = { playing: false, title: null, artist: null, source: null }
+
+const trayIconPath = (): string =>
+  app.isPackaged
+    ? join(process.resourcesPath, 'icon.ico')
+    : join(import.meta.dirname, '../../build/icon.ico')
+
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
+function sendCommand(command: PlayerCommand): void {
+  if (win && !win.isDestroyed()) win.webContents.send('player:command', command)
+}
+
+function windowShown(): boolean {
+  return Boolean(win && win.isVisible() && !win.isMinimized())
+}
+
+function showWindow(): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  refreshTray()
+}
+
+function hideWindow(): void {
+  if (!win || win.isDestroyed()) return
+  win.hide()
+  refreshTray()
+}
+
+function refreshTray(): void {
+  if (!tray) return
+  const title = player.title
+    ? clip(`${player.title}${player.artist ? ` — ${player.artist}` : ''}`, 62)
+    : 'Undertow'
+  tray.setToolTip(title)
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: player.title ? title : 'Ничего не играет',
+      enabled: false
+    },
+    { type: 'separator' },
+    {
+      label: player.playing ? 'Пауза' : 'Играть',
+      enabled: Boolean(player.title),
+      click: () => sendCommand('toggle')
+    },
+    {
+      label: 'Следующий трек',
+      enabled: Boolean(player.title),
+      click: () => sendCommand('next')
+    },
+    {
+      label: 'Предыдущий трек',
+      enabled: Boolean(player.title),
+      click: () => sendCommand('prev')
+    },
+    { type: 'separator' },
+    {
+      label: isMini ? 'Полный вид' : 'Мини-плеер',
+      click: () => {
+        setMini(!isMini)
+        showWindow()
+      }
+    },
+    { label: windowShown() ? 'Скрыть' : 'Показать', click: () => (windowShown() ? hideWindow() : showWindow()) },
+    { type: 'separator' },
+    {
+      label: 'Выход',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      }
+    }
+  ])
+  tray.setContextMenu(menu)
+}
+
+function createTray(): void {
+  if (tray) return
+  try {
+    const image = nativeImage.createFromPath(trayIconPath())
+    tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image.resize({ width: 16, height: 16 }))
+    tray.on('click', () => (windowShown() ? hideWindow() : showWindow()))
+    refreshTray()
+  } catch {
+    tray = null
+  }
+}
+
+function setMini(on: boolean): boolean {
+  if (!win || win.isDestroyed() || on === isMini) return isMini
+
+  if (on) {
+    normalBounds = win.getNormalBounds()
+    wasMaximized = win.isMaximized()
+    if (wasMaximized) win.unmaximize()
+    win.setMinimumSize(360, 200)
+    win.setSize(MINI_W, MINI_H)
+    const area = screen.getDisplayMatching(normalBounds).workArea
+    win.setPosition(area.x + area.width - MINI_W - 18, area.y + area.height - MINI_H - 18)
+    win.setResizable(false)
+    win.setMaximizable(false)
+    win.setAlwaysOnTop(true, 'floating')
+    win.setTitleBarOverlay({ color: MINI_BG, symbolColor: '#8b9cb0', height: 46 })
+  } else {
+    win.setTitleBarOverlay({ color: BG, symbolColor: '#8b9cb0', height: 46 })
+    win.setAlwaysOnTop(false)
+    win.setResizable(true)
+    win.setMaximizable(true)
+    win.setMinimumSize(1000, 660)
+    if (normalBounds) win.setBounds(normalBounds)
+    else win.setSize(1320, 860)
+    if (wasMaximized) win.maximize()
+    normalBounds = null
+    wasMaximized = false
+  }
+
+  isMini = on
+  win.webContents.send('window:mini-changed', isMini)
+  refreshTray()
+  return isMini
+}
+
+function registerWindowIpc(): void {
+  ipcMain.handle('window:mini-state', () => isMini)
+  ipcMain.handle('window:mini', (_e, on: unknown) => setMini(Boolean(on)))
+  ipcMain.handle('window:mini-toggle', () => setMini(!isMini))
+  ipcMain.on('player:state', (_e, report: Partial<PlayerReport> | null) => {
+    player = {
+      playing: Boolean(report?.playing),
+      title: typeof report?.title === 'string' ? report.title : null,
+      artist: typeof report?.artist === 'string' ? report.artist : null,
+      source:
+        report?.source === 'yandex' || report?.source === 'youtube' || report?.source === 'local'
+          ? report.source
+          : null
+    }
+    refreshTray()
+  })
+}
 
 /**
  * В dev кладём окно на второй монитор (если он есть), чтобы проверки и
@@ -63,6 +226,19 @@ function createWindow(): void {
   placeOnSecondDisplay(win)
   win.once('ready-to-show', () => win?.show())
 
+  // Закрытие окна не выключает музыку: приложение остаётся в трее,
+  // а полностью выходим только через пункт «Выход».
+  win.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    win?.hide()
+    refreshTray()
+  })
+  win.on('show', refreshTray)
+  win.on('hide', refreshTray)
+  win.on('minimize', refreshTray)
+  win.on('restore', refreshTray)
+
   // В dev полезно видеть консоль рендерера в терминале
   win.webContents.on('console-message', (event) => {
     const e = event as unknown as { level?: string; message?: string; lineNumber?: number }
@@ -91,7 +267,9 @@ app.whenReady().then(async () => {
   await startAudioProxy()
   setLocalRoot(offline.localRoot())
   registerIpc()
+  registerWindowIpc()
   createWindow()
+  createTray()
 
   // Старые записи истории сохранились без длительности — подтягиваем её
   // в фоне, чтобы не задерживать запуск. Рендерер по событию перечитает
@@ -105,6 +283,10 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
 })
 
 app.on('window-all-closed', () => {

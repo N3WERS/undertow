@@ -224,6 +224,15 @@ export interface ImportResult {
   localTotal: number
 }
 
+export type PlayerCommand = 'toggle' | 'next' | 'prev'
+
+export interface PlayerReport {
+  playing: boolean
+  title: string | null
+  artist: string | null
+  source: 'yandex' | 'youtube' | 'local' | null
+}
+
 export interface UndertowApi {
   home(): Promise<Section[]>
   topChart(scope?: ChartScope, force?: boolean): Promise<TopChart>
@@ -296,6 +305,12 @@ export interface UndertowApi {
   setYandexToken(token: string): Promise<ProviderState>
   clearYandexToken(): Promise<ProviderState>
   refreshYandex(): Promise<ProviderState>
+  miniState(): Promise<boolean>
+  setMini(on: boolean): Promise<boolean>
+  toggleMini(): Promise<boolean>
+  reportPlayer(state: PlayerReport): void
+  onMiniChange(cb: (on: boolean) => void): () => void
+  onPlayerCommand(cb: (command: PlayerCommand) => void): () => void
   onDurations(cb: (count: number) => void): () => void
 }
 

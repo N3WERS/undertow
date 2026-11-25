@@ -161,6 +161,12 @@ export const IconExpand = (p: P) => (
   </svg>
 )
 
+export const IconShrink = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 9h5V4M20 15h-5v5M9 4 4 9M15 20l5-5" />
+  </svg>
+)
+
 export const IconX = (p: P) => (
   <svg {...base(p)}>
     <path d="M6 6l12 12M18 6L6 18" />
