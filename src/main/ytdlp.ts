@@ -86,7 +86,7 @@ export interface YtdlpEntry {
 
 /** Быстрый поиск: --flat-playlist не тянет форматы, ~2.4 с на 24 результата. */
 export async function ytSearch(query: string, limit = 24): Promise<YtdlpEntry[]> {
-  const out = await run(['--no-warnings', '--flat-playlist', '-J', `ytsearch${limit}:${query}`])
+  const out = await run(['--no-warnings', '--force-ipv4', '--socket-timeout', '4', '--flat-playlist', '-J', `ytsearch${limit}:${query}`])
   const data = JSON.parse(out) as { entries?: Record<string, unknown>[] }
   return (data.entries ?? []).map((e) => {
     const thumbs = (e.thumbnails as { url: string; preference?: number }[] | undefined) ?? []
@@ -103,6 +103,99 @@ export async function ytSearch(query: string, limit = 24): Promise<YtdlpEntry[]>
   })
 }
 
+/**
+ * Фоновый прогрев yt-dlp: первый запуск после старта приложения иногда
+ * тратит 10–20 с на player JS/сеть. К моменту первого клика всё уже горячее.
+ */
+export async function ytWarmup(): Promise<void> {
+  try {
+    await run(
+      [
+        '--no-warnings',
+        '--force-ipv4',
+        '--simulate',
+        '--skip-download',
+        '--print',
+        '%(id)s',
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+      ],
+      60_000
+    )
+  } catch {
+    /* прогрев необязателен */
+  }
+}
+
+export interface YtdlpCandidate {
+  url: string
+  ext: string
+  abr: number | null
+  formatId: string
+  acodec: string
+}
+
+interface RawFormat {
+  url?: string
+  ext?: string
+  abr?: number | null
+  tbr?: number | null
+  format_id?: string
+  acodec?: string
+  vcodec?: string
+  protocol?: string
+  format_note?: string
+}
+
+function candidateRank(f: RawFormat): number {
+  const ext = (f.ext || '').toLowerCase()
+  const acodec = (f.acodec || '').toLowerCase()
+  if (ext === 'm4a' || acodec.startsWith('mp4a')) return 0
+  if (acodec.startsWith('opus') || acodec === 'opus') return 1
+  return 2
+}
+
+/**
+ * Один запуск yt-dlp, который возвращает сразу несколько независимых
+ * аудио-URL. Все они подписаны и могут указывать на разные CDN-узлы:
+ * проверяем пачкой и берём первый живой, не запуская Python заново.
+ */
+export async function ytFormats(videoId: string, playerClient?: string): Promise<YtdlpCandidate[]> {
+  const args = [
+    '--no-warnings',
+    '--force-ipv4',
+    '--socket-timeout',
+    '4',
+    '--no-playlist',
+    '-J',
+    `https://www.youtube.com/watch?v=${videoId}`
+  ]
+  if (playerClient) args.push('--extractor-args', `youtube:player_client=${playerClient}`)
+  const out = await run(args, 45_000)
+  const data = JSON.parse(out) as { formats?: RawFormat[]; requested_formats?: RawFormat[]; url?: string; ext?: string }
+  const raw = [...(data.formats ?? []), ...(data.requested_formats ?? [])]
+  if (data.url) raw.push({ url: data.url, ext: data.ext, format_id: 'selected', acodec: 'audio' })
+
+  const seen = new Set<string>()
+  const list: RawFormat[] = []
+  for (const f of raw) {
+    if (!f.url || !/^https?:/i.test(f.url)) continue
+    if ((f.vcodec ?? 'none') !== 'none') continue
+    if ((f.acodec ?? 'none') === 'none') continue
+    if (!['m4a', 'webm', 'mp4', 'mp3', 'opus'].includes((f.ext || '').toLowerCase())) continue
+    if (seen.has(f.url)) continue
+    seen.add(f.url)
+    list.push(f)
+  }
+  list.sort((a, b) => candidateRank(a) - candidateRank(b) || (b.abr ?? b.tbr ?? 0) - (a.abr ?? a.tbr ?? 0))
+  return list.slice(0, 6).map((f) => ({
+    url: f.url as string,
+    ext: (f.ext || 'm4a').toLowerCase(),
+    abr: typeof f.abr === 'number' ? f.abr : typeof f.tbr === 'number' ? f.tbr : null,
+    formatId: String(f.format_id ?? ''),
+    acodec: String(f.acodec ?? '')
+  }))
+}
+
 export interface YtdlpStream {
   url: string
   ext: string
@@ -113,14 +206,25 @@ export interface YtdlpStream {
  * Разрешает прямой URL аудио. Ссылки googlevideo живут часами, но привязаны
  * к IP и содержат подпись — поэтому кэшируем недолго (см. providers/youtube.ts).
  */
-export async function ytResolve(videoId: string): Promise<YtdlpStream> {
+const AUDIO_FORMATS = [
+  'bestaudio[ext=m4a]/bestaudio/best',
+  'bestaudio[acodec=opus]/bestaudio/best',
+  'bestaudio[abr<=70]/bestaudio/best',
+  'bestaudio/best'
+]
+
+export async function ytResolve(videoId: string, attempt = 0): Promise<YtdlpStream> {
+  const format = AUDIO_FORMATS[Math.abs(attempt) % AUDIO_FORMATS.length]
   const out = await run([
     '--no-warnings',
+    '--force-ipv4',
+    '--socket-timeout',
+    '4',
     '-f',
-    'bestaudio[acodec=opus]/bestaudio/best',
+    format,
     '--print',
     '%(ext)s|%(abr)s|%(url)s',
-    `https://music.youtube.com/watch?v=${videoId}`
+    `https://www.youtube.com/watch?v=${videoId}`
   ])
   const line = out.trim().split('\n').filter(Boolean).pop()
   if (!line) throw new Error('yt-dlp вернул пустой ответ')
@@ -156,7 +260,17 @@ export interface YtdlpSearchResolve {
 export async function ytSearchResolve(query: string): Promise<YtdlpSearchResolve | null> {
   const fmt = '%(id)s\t%(title)s\t%(duration)s\t%(uploader)s\t%(ext)s\t%(abr)s\t%(url)s'
   const out = await run(
-    ['--no-warnings', '-f', 'bestaudio', '--print', fmt, `ytsearch1:${query}`],
+    [
+      '--no-warnings',
+      '--force-ipv4',
+      '--socket-timeout',
+      '4',
+      '-f',
+      'bestaudio',
+      '--print',
+      fmt,
+      `ytsearch1:${query}`
+    ],
     60000,
     { PYTHONIOENCODING: 'utf-8' }
   )
@@ -192,7 +306,10 @@ export async function ytDownload(
   videoId: string,
   dir: string,
   baseName: string,
-  onPercent?: (percent: number) => void
+  onPercent?: (percent: number) => void,
+  format = 'bestaudio[acodec=opus]/bestaudio/best',
+  timeoutMs = 300_000,
+  retries = 10
 ): Promise<{ file: string; bytes: number }> {
   const { readdir, stat, rm } = await import('node:fs/promises')
   const path = await import('node:path')
@@ -202,17 +319,22 @@ export async function ytDownload(
     '-m',
     'yt_dlp',
     '--no-warnings',
+    '--force-ipv4',
     '--newline',
     '--no-part',
     '--no-playlist',
     '--force-overwrites',
     '--http-chunk-size',
     '1M',
+    '--socket-timeout',
+    '4',
+    '--retries',
+    String(retries),
     '-f',
-    'bestaudio[acodec=opus]/bestaudio/best',
+    format,
     '-o',
     template,
-    `https://music.youtube.com/watch?v=${videoId}`
+    `https://www.youtube.com/watch?v=${videoId}`
   ]
 
   await new Promise<void>((resolve, reject) => {
@@ -222,7 +344,7 @@ export async function ytDownload(
     const timer = setTimeout(() => {
       child.kill()
       reject(new Error('yt-dlp: скачивание заняло слишком много времени'))
-    }, 300_000)
+    }, timeoutMs)
 
     child.stdout.on('data', (d) => {
       const text = d.toString()

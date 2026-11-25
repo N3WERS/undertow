@@ -4,15 +4,68 @@
  * Разделение обязанностей (проверено спайками):
  *  - метаданные и лента  — youtubei.js (браузить умеет, ссылки на звук нет);
  *  - поиск              — yt-dlp flat (быстро, отдаёт длительность и канал);
- *  - аудио-URL          — yt-dlp -f bestaudio -g (единственный рабочий путь).
+ *  - аудио-URL          — быстрый InnerTube (IOS) с fallback на yt-dlp.
  */
 import { Innertube } from 'youtubei.js'
-import { ytResolve, ytSearch } from '../ytdlp'
+import fs from 'node:fs'
+import path from 'node:path'
+import { app } from 'electron'
+import { ytFormats, ytSearch } from '../ytdlp'
+import { probeStream, registerStreamFallback } from '../audioProxy'
+import { fastAudio } from '../fastStream'
+import { log } from '../log'
 import type { ResolvedStream, Section, Track } from './types'
 
 let clientPromise: Promise<Innertube> | null = null
 const streamCache = new Map<string, { stream: ResolvedStream; expires: number }>()
-const CACHE_TTL = 10 * 60_000
+const CACHE_TTL = 4 * 60 * 60_000
+
+/* ---------- переживающий перезапуск кэш ссылок ---------- */
+let cacheLoaded = false
+let cacheSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function cacheFile(): string {
+  return path.join(app.getPath('userData'), 'yt-streams-v2.json')
+}
+
+function loadStreamCache(): void {
+  if (cacheLoaded) return
+  cacheLoaded = true
+  try {
+    const raw = fs.readFileSync(cacheFile(), 'utf8')
+    const saved = JSON.parse(raw) as Record<string, { stream: ResolvedStream; expires: number }>
+    const now = Date.now()
+    for (const [id, item] of Object.entries(saved)) {
+      if (!item?.stream?.url || typeof item.expires !== 'number' || item.expires <= now + 30_000) continue
+      streamCache.set(id, item)
+    }
+    if (streamCache.size > 120) {
+      const sorted = [...streamCache.entries()].sort((a, b) => b[1].expires - a[1].expires).slice(0, 120)
+      streamCache.clear()
+      for (const [id, item] of sorted) streamCache.set(id, item)
+    }
+  } catch {
+    /* первый запуск или битый файл */
+  }
+}
+
+function saveStreamCacheSoon(): void {
+  if (cacheSaveTimer) clearTimeout(cacheSaveTimer)
+  cacheSaveTimer = setTimeout(() => {
+    cacheSaveTimer = null
+    try {
+      const now = Date.now()
+      const data: Record<string, { stream: ResolvedStream; expires: number }> = {}
+      for (const [id, item] of streamCache) {
+        if (item.expires > now + 30_000) data[id] = item
+      }
+      fs.writeFileSync(cacheFile(), JSON.stringify(data), 'utf8')
+    } catch {
+      /* кэш не критичен */
+    }
+  }, 800)
+}
+
 
 async function client(): Promise<Innertube> {
   if (!clientPromise) {
@@ -211,34 +264,205 @@ export function videoIdOf(trackId: string): string {
 }
 
 /**
- * Разрешает ссылку на звук с коротким кэшем, чтобы перемотка не дёргала yt-dlp.
+ * Разрешает ссылку на звук с кэшем на несколько часов, чтобы повторный запуск не дёргал yt-dlp.
  * Параллельные запросы на один трек (прогрев следующего + ручное переключение)
  * ждут один запуск, а не запускают yt-dlp дважды.
  */
 const resolving = new Map<string, Promise<ResolvedStream>>()
 
-export async function resolveStream(trackId: string): Promise<ResolvedStream> {
+/**
+ * Ограничиваем число одновременных yt-dlp. Без этого прогрев следующих
+ * треков конкурирует с текущим за CPU и сеть и делает старт медленнее.
+ * Задачи с высоким приоритетом (то, что пользователь нажал) идут первыми.
+ */
+const MAX_RESOLVES = 3
+let activeResolves = 0
+interface ResolveTask {
+  priority: number
+  run: () => Promise<void>
+}
+const resolveQueue: ResolveTask[] = []
+
+function pumpResolves(): void {
+  while (activeResolves < MAX_RESOLVES && resolveQueue.length) {
+    const task = resolveQueue.shift()!
+    activeResolves += 1
+    void task
+      .run()
+      .catch(() => undefined)
+      .finally(() => {
+        activeResolves -= 1
+        pumpResolves()
+      })
+  }
+}
+
+function withResolveSlot<T>(priority: number, fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const task: ResolveTask = {
+      priority,
+      run: async () => {
+        try {
+          resolve(await fn())
+        } catch (e) {
+          reject(e)
+        }
+      }
+    }
+    const at = resolveQueue.findIndex((t) => t.priority < priority)
+    if (at < 0) resolveQueue.push(task)
+    else resolveQueue.splice(at, 0, task)
+    pumpResolves()
+  })
+}
+
+/**
+ * Проверяет кандидатов параллельно, но не отдаёт первый случайный живой:
+ * после первого успеха даём 300 мс, чтобы более качественный вариант
+ * (m4a 129 вместо m4a 48) успел ответить. Кандидаты уже отсортированы.
+ */
+async function pickCandidate(candidates: Awaited<ReturnType<typeof ytFormats>>): Promise<(typeof candidates)[number] | null> {
+  return new Promise((resolve) => {
+    const good = new Array<boolean>(candidates.length).fill(false)
+    let left = candidates.length
+    let done = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const finish = (): void => {
+      if (done) return
+      done = true
+      if (timer) clearTimeout(timer)
+      const at = good.findIndex(Boolean)
+      resolve(at >= 0 ? candidates[at] : null)
+    }
+    candidates.forEach((c, i) => {
+      void probeStream(c.url)
+        .then((ok) => {
+          if (ok) {
+            good[i] = true
+            // Если первым ответил низкобитрейтный вариант (48 kbps), даём
+            // больше времени нормальному 129 kbps. Для нормального качества
+            // лишняя пауза не нужна.
+            const low = (candidates[i].abr ?? 0) < 96
+            if (!timer) timer = setTimeout(finish, low ? 800 : 250)
+          }
+        })
+        .finally(() => {
+          left -= 1
+          if (left === 0) finish()
+        })
+    })
+  })
+}
+
+async function resolveSlow(videoId: string, trackId: string): Promise<ResolvedStream> {
+  // Первый клиент — обычный web. Если все его узлы мертвы, пробуем
+  // альтернативные клиенты: они получают другой набор CDN-адресов.
+  const clients: (string | undefined)[] = [undefined, 'web_safari', 'tv']
+  for (const client of clients) {
+    try {
+      const t0 = Date.now()
+      const candidates = await ytFormats(videoId, client)
+      log('yt candidates', videoId, client || 'default', candidates.length, Date.now() - t0 + 'ms')
+      if (!candidates.length) continue
+      const best = await pickCandidate(candidates)
+      if (!best) {
+        log('yt all dead', videoId, client || 'default')
+        continue
+      }
+      const stream: ResolvedStream = {
+        url: best.url,
+        mime: best.ext === 'webm' ? 'audio/webm' : best.ext === 'mp4' || best.ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg',
+        bitrateKbps: best.abr ? Math.round(best.abr) : undefined,
+        ttlMs: CACHE_TTL,
+        source: 'youtube',
+        videoId
+      }
+      log(
+        'yt pick',
+        videoId,
+        client || 'default',
+        best.formatId,
+        best.ext,
+        best.abr ?? '',
+        new URL(best.url).hostname
+      )
+      streamCache.set(trackId, { stream, expires: Date.now() + CACHE_TTL })
+      saveStreamCacheSoon()
+      return stream
+    } catch (e) {
+      log('yt resolve err', videoId, client || 'default', e instanceof Error ? e.message.slice(0, 140) : String(e))
+    }
+  }
+  throw new Error('Не удалось получить рабочий поток')
+}
+
+const fastFallbackPending = new Set<string>()
+
+/** Старые записи кэша 0.6.2 не имели флага fast — узнаём IOS-ссылку по c=IOS. */
+function isFastUrl(url: string): boolean {
+  try {
+    return new URL(url).searchParams.get('c') === 'IOS'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Быстрая IOS-ссылка отдаёт только первый МиБ. Параллельно с её
+ * воспроизведением добываем полный yt-dlp-URL и отдаём его прокси:
+ * первые 60 секунд идут с быстрой ссылки, дальше — без паузы и без
+ * перезапуска трека с полной.
+ */
+function startFastFallback(videoId: string, trackId: string, fastUrl: string): void {
+  if (fastFallbackPending.has(trackId)) return
+  fastFallbackPending.add(trackId)
+  const slow = withResolveSlot(1, () => resolveSlow(videoId, trackId))
+  registerStreamFallback(fastUrl, slow.then((s) => s.url))
+  void slow
+    .catch((e) => log('fast fallback err', videoId, e instanceof Error ? e.message.slice(0, 120) : String(e)))
+    .finally(() => fastFallbackPending.delete(trackId))
+}
+
+export async function resolveStream(trackId: string, fresh = false, priority = 1): Promise<ResolvedStream> {
+  loadStreamCache()
   const cached = streamCache.get(trackId)
-  if (cached && cached.expires > Date.now()) return cached.stream
+  if (cached && cached.expires > Date.now()) {
+    // Старая быстрая ссылка в кэше: полный URL мог не успеть сохраниться.
+    if ((cached.stream.fast || isFastUrl(cached.stream.url)) && !fresh) {
+      startFastFallback(videoIdOf(trackId), trackId, cached.stream.url)
+    }
+    log('yt cache', videoIdOf(trackId))
+    return cached.stream
+  }
   const pending = resolving.get(trackId)
   if (pending) return pending
 
-  const job = (async () => {
-    const { url, ext, abr } = await ytResolve(videoIdOf(trackId))
-    const stream: ResolvedStream = {
-      url,
-      mime: ext === 'webm' ? 'audio/webm' : ext === 'mp4' || ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg',
-      bitrateKbps: abr ? Math.round(abr) : undefined,
-      ttlMs: CACHE_TTL,
-      source: 'youtube',
-      videoId: videoIdOf(trackId)
+  const job = withResolveSlot(priority, async () => {
+    const videoId = videoIdOf(trackId)
+
+    // Быстрый InnerTube-путь только для интерактивного запроса. Прогрев
+    // очереди остаётся на yt-dlp, чтобы не плодить фоновые процессы.
+    if (!fresh && priority > 0) {
+      const fast = await fastAudio(videoId, 1200)
+      if (fast) {
+        const stream: ResolvedStream = {
+          url: fast.url,
+          mime: fast.mime,
+          bitrateKbps: fast.bitrateKbps,
+          ttlMs: CACHE_TTL,
+          source: 'youtube',
+          videoId,
+          fast: true
+        }
+        streamCache.set(trackId, { stream, expires: Date.now() + CACHE_TTL })
+        saveStreamCacheSoon()
+        startFastFallback(videoId, trackId, fast.url)
+        return stream
+      }
     }
-    streamCache.set(trackId, { stream, expires: Date.now() + CACHE_TTL })
-    if (streamCache.size > 120) {
-      for (const [k, v] of streamCache) if (v.expires < Date.now()) streamCache.delete(k)
-    }
-    return stream
-  })()
+
+    return resolveSlow(videoId, trackId)
+  })
   resolving.set(trackId, job)
   try {
     return await job
@@ -256,6 +480,7 @@ export function rememberStream(trackId: string, stream: ResolvedStream): void {
 export function dropStreamCache(trackId?: string): void {
   if (trackId) streamCache.delete(trackId)
   else streamCache.clear()
+  saveStreamCacheSoon()
 }
 
 /* ------------------------------- чарт ------------------------------------ */

@@ -7,6 +7,8 @@
 !macro customInstall
   DetailPrint "Устанавливаю службу обхода DPI..."
   ExecWait '"$INSTDIR\resources\zapret\UndertowDpiService.exe" --install "$INSTDIR\resources\zapret"' $0
+  ; подчищаем движок из 0.5.5–0.5.8, чтобы не оставалось двух наборов файлов
+  RMDir /r "$INSTDIR\resources\undertowdpi"
   DetailPrint "Служба UndertowDpi: код $0"
 !macroend
 

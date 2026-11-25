@@ -9,3 +9,5 @@ Thumbs.db
 .env
 it.json
 docs/
+
+resources/undertowdpi/*.old

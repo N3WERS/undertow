@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DpiStatus, ProviderState } from '../types'
 import { APP_AUTHOR, APP_VERSION } from '../version'
 
@@ -12,6 +12,8 @@ interface Props {
   onNormalize: (v: boolean) => void
   dpi: DpiStatus | null
   onDpi: (s: DpiStatus) => void
+  focus?: 'dpi' | null
+  onFocusDone?: () => void
 }
 
 export default function Settings({
@@ -23,12 +25,28 @@ export default function Settings({
   normalize,
   onNormalize,
   dpi,
-  onDpi
+  onDpi,
+  focus,
+  onFocusDone
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const dpiRef = useRef<HTMLElement>(null)
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState<'save' | 'clear' | 'refresh' | null>(null)
   const [dpiBusy, setDpiBusy] = useState(false)
   const yn = state?.yandex
+
+  // плашка UndertowDPI в заголовке ведёт не просто в настройки, а прямо к блоку
+  useEffect(() => {
+    if (focus !== 'dpi') return
+    const scroller = scrollRef.current
+    const target = dpiRef.current
+    if (!scroller || !target) return
+    const top =
+      scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12
+    scroller.scrollTo({ top, behavior: 'smooth' })
+    onFocusDone?.()
+  }, [focus])
 
   const refreshDpi = async () => {
     try {
@@ -42,6 +60,7 @@ export default function Settings({
     setDpiBusy(true)
     try {
       onDpi(await window.undertow.dpiSet(next))
+      localStorage.setItem('undertow.dpi', next ? 'on' : 'off')
       onToast(
         next
           ? 'Обход DPI включён — YouTube должен открываться заметно быстрее'
@@ -50,19 +69,6 @@ export default function Settings({
     } catch (e) {
       onToast(e instanceof Error ? e.message : String(e), 'error')
       await refreshDpi()
-    } finally {
-      setDpiBusy(false)
-    }
-  }
-
-  const chooseDpi = async () => {
-    setDpiBusy(true)
-    try {
-      const next = await window.undertow.dpiChoose()
-      onDpi(next)
-      if (next.path) onToast('Папка zapret сохранена')
-    } catch (e) {
-      onToast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
       setDpiBusy(false)
     }
@@ -114,7 +120,7 @@ export default function Settings({
   const dpiCanToggle = Boolean(dpi?.supported) && Boolean(dpi?.available || dpi?.running) && !dpiBusy
 
   return (
-    <div className="scroll">
+    <div className="scroll" ref={scrollRef}>
       <div className="page-head">
         <div>
           <h1>Настройки</h1>
@@ -235,7 +241,8 @@ export default function Settings({
 
         <label className="check">
           <input type="checkbox" checked={normalize} onChange={(e) => onNormalize(e.target.checked)} />
-          <span>
+          <span className="check-box" aria-hidden="true" />
+          <span className="check-copy">
             <b>Выравнивать громкость</b>
             <em>
               Тихое поднимается, громкое опускается к одному уровню (−18 dBFS RMS). В плеере показывает текущую
@@ -245,14 +252,14 @@ export default function Settings({
         </label>
       </section>
 
-      <section className="panel surface-hero surface-deep">
+      <section id="settings-dpi" ref={dpiRef} className="panel surface-hero surface-deep">
         <div className="panel-head">
           <div>
             <h2>Обход блокировок</h2>
             <p>
-              YouTube в России часто открывается в разы медленнее из-за DPI. Здесь можно поднять локальный winws,
-              который меняет только TLS/QUIC-пакеты к доменам YouTube и Google. Остальной трафик не трогается.
-              Встроенный набор уже в установщике. В обычной установке переключение идёт через службу, без UAC.
+              YouTube в России часто открывается в разы медленнее из-за DPI. UndertowDPI сам перехватывает
+              TLS-рукопожатие к доменам YouTube и Google и делит его на два TCP-сегмента через WinDivert.
+              Остальной трафик не трогается. Переключение идёт через службу, без UAC.
             </p>
           </div>
           <span className={`pill ${dpi?.state === 'on' ? 'ok' : 'off'}`}>{dpiLabel}</span>
@@ -265,12 +272,12 @@ export default function Settings({
             disabled={!dpiCanToggle}
             onChange={(e) => void toggleDpi(e.target.checked)}
           />
-          <span>
+          <span className="check-box" aria-hidden="true" />
+          <span className="check-copy">
             <b>Обход DPI для YouTube</b>
             <em>
-              {dpi?.mode === 'service'
-                ? 'Служба UndertowDpi установлена вместе с приложением. Включение и выключение идут без UAC, а при закрытии Undertow служба сама гасит winws.'
-                : 'Служба ещё не установлена. Windows запросит права администратора; для обычной работы обнови установщик.'}
+              Служба UndertowDpi устанавливается вместе с приложением. Включение и выключение идут без UAC,
+              а при закрытии Undertow служба сама выключает обход.
             </em>
           </span>
         </label>
@@ -281,35 +288,51 @@ export default function Settings({
             <b>{dpiLabel}</b>
           </div>
           <div>
-            <span>Папка zapret</span>
-            <b className="dpi-path" title={dpi?.path ?? ''}>
-              {dpi?.bundled ? 'встроенный набор' : (dpi?.path ?? 'не найдена')}
-            </b>
+            <span>Движок</span>
+            <b>UndertowDPI + WinDivert</b>
           </div>
           <div>
             <span>Правила</span>
-            <b>только YouTube и Google · порт 443</b>
+            <b>TLS ClientHello · TCP 443</b>
           </div>
           <div>
             <span>Режим</span>
-            <b>{dpi?.mode === 'service' ? 'служба, без UAC' : 'разовый UAC'}</b>
+            <b>служба, без UAC</b>
           </div>
           <div>
             <span>Права</span>
-            <b>{dpi?.mode === 'service' ? 'служба работает от SYSTEM' : 'UAC при включении'}</b>
+            <b>служба работает от SYSTEM</b>
           </div>
         </div>
 
         {dpi?.error && <div className="notice">{dpi.error}</div>}
 
         <div className="panel-foot">
-          {dpi?.mode !== 'service' && (
-            <button className="link-btn" onClick={() => void chooseDpi()} disabled={!dpi?.supported || dpiBusy}>
-              Выбрать папку zapret
-            </button>
-          )}
           <button className="link-btn" onClick={() => void refreshDpi()} disabled={dpiBusy}>
             Проверить
+          </button>
+        </div>
+      </section>
+
+      <section className="panel surface-hero surface-deep">
+        <div className="panel-head">
+          <div>
+            <h2>Диагностика</h2>
+            <p>
+              Журнал приложения: запуск, включение DPI, разрешение ссылок, ошибки потока и ответы
+              аудио-прокси. По нему видно, на каком треке и узле CDN всё сломалось.
+            </p>
+          </div>
+        </div>
+        <div className="status-list">
+          <div>
+            <span>Файл лога</span>
+            <b>%APPDATA%\undertow\app.log</b>
+          </div>
+        </div>
+        <div className="panel-foot">
+          <button className="link-btn" onClick={() => void window.undertow.openLog()}>
+            Открыть лог
           </button>
         </div>
       </section>

@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { proxify } from './audioProxy'
 import * as providers from './providers'
+import { ytWarmup } from './ytdlp'
 import type { BrowsePage, Track } from './providers/types'
 import * as queueStore from './queueStore'
 import * as versions from './versions'
@@ -11,11 +12,25 @@ import * as offline from './offline'
 import * as savedAlbums from './savedAlbums'
 import * as genres from './genres'
 import * as dpi from './dpi'
+import { log, logPath } from './log'
 
 export function registerIpc(): void {
   ipcMain.handle('dpi:status', async () => dpi.getStatus())
-  ipcMain.handle('dpi:set', async (_e, on: boolean) => dpi.setEnabled(Boolean(on)))
-  ipcMain.handle('dpi:choose', async () => dpi.chooseFolder())
+  ipcMain.handle('dpi:set', async (_e, on: boolean) => {
+    log('dpi:set', on)
+    const status = await dpi.setEnabled(Boolean(on))
+    log('dpi:set ->', status.state, status.mode, status.error || '')
+    if (on && status.state === 'on') void ytWarmup()
+    return status
+  })
+  ipcMain.on('log', (_e, message: unknown, data?: unknown) => {
+    log('renderer:', message, data ?? '')
+  })
+  ipcMain.handle('log:path', async () => logPath())
+  ipcMain.handle('log:open', async () => {
+    shell.showItemInFolder(logPath())
+    return logPath()
+  })
 
   ipcMain.handle('home', async () => providers.home())
   ipcMain.handle('chart:top', async (_e, scope?: string, force?: boolean) =>
@@ -29,11 +44,18 @@ export function registerIpc(): void {
   ipcMain.handle('search', async (_e, query: string) => providers.search(String(query ?? '')))
   ipcMain.handle('search:all', async (_e, query: string) => providers.searchAll(String(query ?? '')))
   ipcMain.handle('resolve', async (_e, id: string, fresh: boolean, meta?: Track) => {
-    const stream = await providers.resolveStream(String(id), Boolean(fresh), meta)
-    // локальная копия уже отдаётся прокси (endpoint /f) — второй раз не оборачиваем
-    if (stream.source === 'local') return stream
-    // через локальный прокси: он добавляет CORS, без которого Web Audio молчит
-    return { ...stream, url: proxify(stream.url, stream.mime) }
+    const t0 = Date.now()
+    try {
+      const stream = await providers.resolveStream(String(id), Boolean(fresh), meta)
+      log('resolve ok', String(id), 'fresh=' + Boolean(fresh), Date.now() - t0 + 'ms', stream.mime, stream.source)
+      // локальная копия уже отдаётся прокси (endpoint /f) — второй раз не оборачиваем
+      if (stream.source === 'local' || stream.url.startsWith('http://127.0.0.1:')) return stream
+      // через локальный прокси: он добавляет CORS, без которого Web Audio молчит
+      return { ...stream, url: proxify(stream.url, stream.mime) }
+    } catch (e) {
+      log('resolve FAIL', String(id), 'fresh=' + Boolean(fresh), Date.now() - t0 + 'ms', e instanceof Error ? e.message : String(e))
+      throw e
+    }
   })
 
   // локальные копии: скачивание идёт в main, чтобы не зависеть от сети рендерера

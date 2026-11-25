@@ -3,8 +3,10 @@ import type { Rectangle } from 'electron'
 import { join } from 'node:path'
 import { startAudioProxy, setLocalRoot } from './audioProxy'
 import { registerIpc } from './ipc'
+import { warmFastClient } from './fastStream'
 import * as offline from './offline'
 import * as providers from './providers'
+import { log, logPath } from './log'
 
 const BG = '#070a0e'
 const MINI_BG = '#0b0d12'
@@ -290,6 +292,7 @@ if (!singleInstance) {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('co.undertow.app')
+    log('--- app start', app.getVersion(), '---', 'log:', logPath())
     // аудио-прокси нужен до первого resolve, иначе плеер получит прямые URL без CORS
     await startAudioProxy()
     setLocalRoot(offline.localRoot())
@@ -297,6 +300,10 @@ if (!singleInstance) {
     registerWindowIpc()
     createWindow()
     createTray()
+
+    // Быстрый InnerTube-клиент греем в фоне: первый resolve не должен
+    // платить за создание сессии, но и запуск окна задерживать нельзя.
+    setTimeout(() => warmFastClient(), 2500)
 
     // Старые записи истории сохранились без длительности — подтягиваем её
     // в фоне, чтобы не задерживать запуск. Рендерер по событию перечитает

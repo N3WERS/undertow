@@ -304,15 +304,21 @@ export async function pickFallback(track: Track, candidate: fallback.FallbackCan
  * Для YouTube-треков это просто прогрев ссылки, для яндексовских без Плюса —
  * поиск копии, который иначе занял бы секунды после клика.
  */
+const prewarming = new Set<string>()
+
 export async function prewarm(track: Track): Promise<void> {
+  if (prewarming.has(track.id)) return
+  prewarming.add(track.id)
   try {
     if (track.provider === 'yandex' && !yandexReady()) {
       await fallback.toYoutube(track)
       return
     }
-    await resolveStream(track.id, false, track)
+    await resolveStream(track.id, false, track, 0)
   } catch {
     // прогрев — необязательная оптимизация
+  } finally {
+    prewarming.delete(track.id)
   }
 }
 
@@ -734,20 +740,23 @@ export async function debugFileInfo(trackId: string): Promise<unknown> {
   return out
 }
 
-export async function resolveStream(trackId: string, fresh = false, meta?: Track): Promise<ResolvedStream> {
+export async function resolveStream(trackId: string, fresh = false, meta?: Track, priority = 1): Promise<ResolvedStream> {
   // сохранённая копия главнее любого источника: играет без сети и без Плюса
   const local = await offline.localStream(trackId)
   if (local) {
     const { filePath, ...rest } = local
     return { ...rest, url: proxifyLocal(filePath, local.mime) }
   }
+  // fresh означает «дай другую ссылку»: без сброса кэша повторный resolve
+  // вернул бы тот же самый недоступный rr-хост.
+  if (fresh && trackId.startsWith('yt:')) youtube.dropStreamCache(trackId)
   if (trackId.startsWith('ym:')) await ensureYandexChecked()
   if (trackId.startsWith('ym:')) {
     // выбранный вручную вариант важнее источника: даже при живом Яндексе
     // играем ту копию, которую пользователь закрепил через «другой вариант»
     const pinnedYm = fresh ? null : fallback.pinnedVideo(trackId)
     if (pinnedYm) {
-      const st = await youtube.resolveStream(`yt:${pinnedYm}`)
+      const st = await youtube.resolveStream(`yt:${pinnedYm}`, fresh, priority)
       const m = await fallback.mappingFor(trackId)
       return {
         ...st,
@@ -789,7 +798,7 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
   // YouTube-трек: если пользователь выбрал другую копию, играем её
   const pinned = fallback.pinnedVideo(trackId)
   if (pinned && trackId !== `yt:${pinned}`) {
-    const st = await youtube.resolveStream(`yt:${pinned}`)
+    const st = await youtube.resolveStream(`yt:${pinned}`, false, priority)
     const mapping = await fallback.mappingFor(trackId)
     return {
       ...st,
@@ -828,7 +837,7 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
       // YouTube резолвим сразу: если Яндекс задумался, стартуем с него, а не
       // держим полоску на нуле. Секунда — предел, после которого ожидание
       // переключения уже выглядит как зависший плеер.
-      const yt = youtube.resolveStream(trackId)
+      const yt = youtube.resolveStream(trackId, fresh, priority)
       void yt.catch(() => null)
       const fast = await Promise.race([
         fromYandex(),
@@ -839,5 +848,5 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
     }
   }
 
-  return youtube.resolveStream(trackId)
+  return youtube.resolveStream(trackId, fresh, priority)
 }

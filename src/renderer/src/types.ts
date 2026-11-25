@@ -318,7 +318,9 @@ export interface UndertowApi {
   refreshYandex(): Promise<ProviderState>
   dpiStatus(): Promise<DpiStatus>
   dpiSet(on: boolean): Promise<DpiStatus>
-  dpiChoose(): Promise<DpiStatus>
+  log(message: string, data?: unknown): void
+  logPath(): Promise<string>
+  openLog(): Promise<string>
   miniState(): Promise<boolean>
   setMini(on: boolean): Promise<boolean>
   toggleMini(): Promise<boolean>

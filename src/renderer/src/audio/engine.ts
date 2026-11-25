@@ -29,7 +29,7 @@ export interface EngineHandlers {
   /** очередь изменилась: состав, порядок или текущая позиция */
   onQueue(queue: Track[], index: number, shuffled: boolean): void
   onRepeat(mode: RepeatMode): void
-  onError(message: string): void
+  onError(message: string, retry?: () => void): void
   onQuality(label: string | null): void
   /** трек играет найденной копией с YouTube (Яндекс был недоступен) */
   /**
@@ -60,6 +60,36 @@ const MAX_BOOST_DB = 12
 const dbToGain = (db: number) => Math.pow(10, db / 20)
 const gainToDb = (g: number) => 20 * Math.log10(Math.max(g, 1e-6))
 
+/**
+ * play() отменяется pause() при быстром переключении или повторном клике.
+ * Это штатная гонка HTMLMediaElement, а не ошибка загрузки — не показываем её.
+ */
+const withTimeout = <T>(p: Promise<T>, ms: number, message: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    )
+  })
+
+const playInterrupted = (e: unknown): boolean => {
+  const err = e as { name?: string; message?: string } | null
+  return (
+    err?.name === 'AbortError' ||
+    err?.name === 'NotSupportedError' ||
+    /interrupted by a call to pause|play\(\) request was interrupted|no supported source/i.test(
+      err?.message ?? ''
+    )
+  )
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null
   private els: HTMLAudioElement[] = []
@@ -87,6 +117,12 @@ export class AudioEngine {
   private loadedId: (string | null)[] = [null, null]
   /** что именно загружено в каждый слот: mime/битрейт/признак подмены */
   private loadedInfo: (ResolvedStream | null)[] = [null, null]
+  /** на текущем треке уже была одна попытка перезапросить поток */
+  private activeAttempts = 0
+  /** пока идёт перезапрос URL, старые ошибки элемента игнорируем */
+  private retrying = false
+  /** сторож загрузки: не даёт переходу зависнуть на «вечном» buffering */
+  private loadTimer: ReturnType<typeof setTimeout> | null = null
   private preloadToken = 0
   /** хвост очереди в исходном порядке — чтобы выключить перемешивание */
   private shuffleTail: Track[] | null = null
@@ -152,10 +188,39 @@ export class AudioEngine {
       g.connect(master)
 
       el.addEventListener('ended', () => this.onElementEnded(i))
+      el.addEventListener('canplay', () => {
+        if (i === this.active) this.clearLoadTimer()
+      })
       el.addEventListener('error', () => {
-        if (i !== this.active) return
+        // Ошибка в неактивном слоте — это сломанная предзагрузка. Если
+        // оставить loadedId, при переключении движок решит, что трек уже
+        // готов, и будет играть мёртвый элемент вместо нового resolve.
+        if (i !== this.active) {
+          window.undertow.log('preload failed', { id: this.loadedId[i], code: el.error?.code ?? null })
+          this.clearSlot(i)
+          return
+        }
+        if (this.retrying) return
+        this.clearLoadTimer()
+        // Конкретный rr-хост googlevideo может сбросить соединение или
+        // отдать мёртвый редирект. Пробуем до трёх свежих URL, прежде чем
+        // пропустить трек: разные запросы попадают на разные узлы CDN.
+        const track = this.queue[this.index]
+        if (track?.provider === 'youtube' && this.activeAttempts < 1) {
+          this.activeAttempts += 1
+          void this.retryActive(el, track)
+          return
+        }
         const code = el.error?.code
-        this.handlers.onError(`Поток оборвался${code ? ` (код ${code})` : ''}`)
+        window.undertow.log('audio error', { id: track?.id, code, attempts: this.activeAttempts })
+        const retry = (): void => {
+          this.activeAttempts = 0
+          void this.retryActive(el, track)
+        }
+        this.handlers.onError(
+          `Не удалось запустить «${track?.title ?? 'трек'}»${code ? ` (код ${code})` : ''}`,
+          retry
+        )
         void this.next()
       })
 
@@ -260,6 +325,7 @@ export class AudioEngine {
   async toggle(): Promise<void> {
     // после восстановления очереди граф ещё не создан — play и есть первый запуск
     this.ensureGraph()
+    this.retrying = false
     const el = this.els[this.active]
     if (!el.src) {
       // восстановленная очередь ещё не загружена — play и есть первый запуск
@@ -276,11 +342,13 @@ export class AudioEngine {
     } else {
       this.playing = true
       await this.ctx?.resume()
-      try {
-        await el.play()
-      } catch (e) {
-        this.handlers.onError(`Не играет: ${(e as Error).message}`)
-      }
+      // play() резолвится только когда реально пошли данные; на медленном
+      // rr-хосте ожидание подвешивало весь переход. Запускаем без await.
+      void el.play().catch((e) => {
+        if (!playInterrupted(e)) this.handlers.onError(`Не играет: ${(e as Error).message}`)
+      })
+      const track = this.queue[this.index]
+      if (track && el.readyState < 2) this.armLoadTimer(track)
       this.syncLoop()
     }
   }
@@ -470,15 +538,23 @@ export class AudioEngine {
     this.switching = false
     this.loadedId[this.active] = null
     this.loadedInfo[this.active] = null
+    this.activeAttempts = 0
+    this.retrying = false
     const wasPlaying = this.playing
     try {
       // fresh=false: закреплённый вариант не должен переискиваться заново
-      const stream = await window.undertow.resolve(track.id, false, track)
+      const stream = await withTimeout(
+        window.undertow.resolve(track.id, false, track),
+        35_000,
+        'источник не ответил'
+      )
       if (this.destroyed) return
+      window.undertow.log('retry ok', { id: track.id, mime: stream.mime })
       el.src = stream.url
       el.load()
       this.loadedId[this.active] = track.id
       this.loadedInfo[this.active] = stream
+      this.armLoadTimer(track)
       this.emitQuality(stream.mime, stream.bitrateKbps)
       this.handlers.onSource(
         stream.source ??
@@ -502,6 +578,7 @@ export class AudioEngine {
 
   destroy(): void {
     this.destroyed = true
+    this.clearLoadTimer()
     this.stopLoop()
     document.removeEventListener('visibilitychange', this.onVisibility)
     for (const el of this.els) {
@@ -522,6 +599,17 @@ export class AudioEngine {
       this.handlers.onTrackChange(null)
       return
     }
+    // Предзагрузка могла умереть, пока слот был неактивен: считаем его
+    // пустым до того, как решить, нужен ли новый resolve.
+    const activeEl = this.els[this.active]
+    if (
+      activeEl &&
+      this.loadedId[this.active] === track.id &&
+      (activeEl.error || activeEl.networkState === HTMLMediaElement.NETWORK_NO_SOURCE)
+    ) {
+      window.undertow.log('stale preload, reload', { id: track.id })
+      this.clearSlot(this.active)
+    }
     this.ensureGraph()
     const el = this.els[this.active]
     const ctx = this.ctx!
@@ -537,7 +625,11 @@ export class AudioEngine {
       // следующий. Молчание лучше рассинхрона.
       this.clearSlot(this.active)
       try {
-        const stream = await window.undertow.resolve(track.id, false, track)
+        const stream = await withTimeout(
+          window.undertow.resolve(track.id, false, track),
+          35_000,
+          'источник не ответил'
+        )
         if (this.destroyed) return
         // пока резолвили, трек могли переключить ещё раз
         if (this.queue[this.index]?.id !== track.id) return
@@ -555,6 +647,8 @@ export class AudioEngine {
 
     el.currentTime = 0
     this.normDb = 0
+    this.activeAttempts = 0
+    this.armLoadTimer(track)
     this.handlers.onTrackChange(this.displayOf(track))
 
     // подпись качества и сообщение о подмене берём из того, что уже загружено в слот:
@@ -577,15 +671,14 @@ export class AudioEngine {
     }
 
     if (autoplay) {
-      try {
-        await this.ctx?.resume()
-        await el.play()
-      } catch (e) {
-        this.handlers.onError(`Не играет: ${(e as Error).message}`)
-      }
+      await this.ctx?.resume()
+      void el.play().catch((e) => {
+        if (!playInterrupted(e)) this.handlers.onError(`Не играет: ${(e as Error).message}`)
+      })
     }
 
     void this.preloadNext()
+    void this.prewarmAhead()
     this.emitSnapshot(performance.now(), this.playing)
     this.syncLoop()
   }
@@ -597,6 +690,80 @@ export class AudioEngine {
   }
 
   /** Повтор одного трека: тот же слот, с начала, без пересоздания потока. */
+  private clearLoadTimer(): void {
+    if (this.loadTimer) {
+      clearTimeout(this.loadTimer)
+      this.loadTimer = null
+    }
+  }
+
+  private armLoadTimer(track: Track): void {
+    this.clearLoadTimer()
+    const id = track.id
+    this.loadTimer = setTimeout(() => {
+      this.loadTimer = null
+      if (this.destroyed || this.queue[this.index]?.id !== id || !this.playing || this.retrying) return
+      const el = this.els[this.active]
+      if (el.readyState >= 2) return
+      if (this.activeAttempts < 1) {
+        this.activeAttempts += 1
+        void this.retryActive(el, track)
+      } else {
+        window.undertow.log('load timeout, skip', { id, attempts: this.activeAttempts })
+        this.handlers.onError(`«${track.title}» не загрузился, пропускаю`, () => {
+          this.activeAttempts = 0
+          void this.retryActive(el, track)
+        })
+        void this.next()
+      }
+    }, 8_000)
+  }
+
+  /**
+   * Перезапрос потока после ошибки элемента. Свежий resolve нужен потому,
+   * что googlevideo-URL живёт ограниченное время, а редирект может увести
+   * на конкретный rr-хост, который сейчас недоступен.
+   */
+  private async retryActive(el: HTMLAudioElement, track: Track): Promise<void> {
+    window.undertow.log('retry start', track.id)
+    this.retrying = true
+    this.clearLoadTimer()
+    try {
+      const stream = await withTimeout(
+        window.undertow.resolve(track.id, true, track),
+        35_000,
+        'источник не ответил'
+      )
+      if (this.destroyed || this.queue[this.index]?.id !== track.id) return
+      window.undertow.log('retry ok', { id: track.id, mime: stream.mime })
+      el.src = stream.url
+      el.load()
+      this.loadedId[this.active] = track.id
+      this.loadedInfo[this.active] = stream
+      this.emitQuality(stream.mime, stream.bitrateKbps)
+      this.emitCopy(track)
+      await this.ctx?.resume()
+      void el.play().catch((e) => {
+        if (!playInterrupted(e)) this.handlers.onError(`Не играет: ${(e as Error).message}`)
+      })
+      // даём элементу проглотить события от старого src, прежде чем снова
+      // слушать ошибки — иначе один сбой съедает все три попытки
+      await new Promise((r) => setTimeout(r, 500))
+      if (this.destroyed || this.queue[this.index]?.id !== track.id) return
+      this.retrying = false
+      this.armLoadTimer(track)
+      this.syncLoop()
+    } catch (e) {
+      this.retrying = false
+      window.undertow.log('retry FAIL', { id: track.id, err: (e as Error).message })
+      this.handlers.onError(`«${track.title}»: ${(e as Error).message}`, () => {
+        this.activeAttempts = 0
+        void this.retryActive(el, track)
+      })
+      void this.next()
+    }
+  }
+
   private restartCurrent(): void {
     const el = this.els[this.active]
     if (!el.src) return
@@ -606,9 +773,26 @@ export class AudioEngine {
     this.normDb = 0
     el.currentTime = 0
     void this.ctx?.resume()
-    void el.play().catch((e) => this.handlers.onError(`Не играет: ${(e as Error).message}`))
+    void el.play().catch((e) => {
+      if (!playInterrupted(e)) this.handlers.onError(`Не играет: ${(e as Error).message}`)
+    })
     void this.preloadNext()
     this.syncLoop()
+  }
+
+  /** Готовит ссылки на 2–3 трека вперёд, чтобы следующие переходы были без паузы. */
+  private async prewarmAhead(): Promise<void> {
+    const token = this.preloadToken
+    for (let step = 2; step <= 5; step += 1) {
+      const target = this.queue[this.index + step]
+      if (!target) return
+      if (this.destroyed || token !== this.preloadToken) return
+      try {
+        await window.undertow.prewarm(target)
+      } catch {
+        /* прогрев необязателен */
+      }
+    }
   }
 
   private async preloadNext(): Promise<void> {
@@ -740,7 +924,7 @@ export class AudioEngine {
       this.switching = false
       return
     }
-    if (!el.src || this.loadedId[other] !== this.queue[target]?.id) {
+    if (!el.src || el.error || this.loadedId[other] !== this.queue[target]?.id) {
       this.switching = false
       await this.hardSwitch(target)
       return
@@ -779,7 +963,7 @@ export class AudioEngine {
       this.switching = false
       return
     }
-    if (!el.src || this.loadedId[other] !== this.queue[target]?.id) {
+    if (!el.src || el.error || this.loadedId[other] !== this.queue[target]?.id) {
       this.switching = false
       await this.hardSwitch(target)
       return

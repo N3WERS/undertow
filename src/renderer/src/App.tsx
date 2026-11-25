@@ -44,6 +44,7 @@ interface Toast {
   id: number
   text: string
   kind: 'info' | 'error'
+  action?: { label: string; run: () => void }
 }
 
 let toastSeq = 0
@@ -72,6 +73,8 @@ export default function App() {
   const [homeError, setHomeError] = useState<string | null>(null)
   const [state, setState] = useState<ProviderState | null>(null)
   const [dpi, setDpi] = useState<DpiStatus | null>(null)
+  const [settingsFocus, setSettingsFocus] = useState<'dpi' | null>(null)
+  const dpiAutoTried = useRef(false)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const [snap, setSnap] = useState<Snapshot>(EMPTY_SNAP)
@@ -121,7 +124,23 @@ export default function App() {
       void window.undertow
         .dpiStatus()
         .then((next) => {
-          if (alive) setDpi(next)
+          if (!alive) return
+          setDpi(next)
+          // если обход был включён в прошлый раз — включаем его снова,
+          // иначе после перезапуска YouTube снова едет на 20 секунд
+          if (
+            !dpiAutoTried.current &&
+            next.state === 'off' &&
+            localStorage.getItem('undertow.dpi') === 'on'
+          ) {
+            dpiAutoTried.current = true
+            void window.undertow
+              .dpiSet(true)
+              .then((after) => {
+                if (alive) setDpi(after)
+              })
+              .catch(() => undefined)
+          }
         })
         .catch(() => undefined)
     }
@@ -166,7 +185,7 @@ export default function App() {
   const [importing, setImporting] = useState(false)
 
   const engineRef = useRef<AudioEngine | null>(null)
-  const toastRef = useRef<(text: string, kind?: Toast['kind']) => void>(() => undefined)
+  const toastRef = useRef<(text: string, kind?: Toast['kind'], action?: Toast['action']) => void>(() => undefined)
   const currentId = track?.id ?? null
   // кнопка «текст» появляется только там, где LRCLIB реально что-то отдал
   useEffect(() => {
@@ -190,10 +209,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track?.id])
 
-  const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
+  const toast = useCallback((text: string, kind: Toast['kind'] = 'info', action?: Toast['action']) => {
     const id = ++toastSeq
-    setToasts((prev) => [...prev.slice(-2), { id, text, kind }])
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5200)
+    setToasts((prev) => [...prev.slice(-2), { id, text, kind, action }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), action ? 12000 : 5200)
   }, [])
   toastRef.current = toast
   // события из любых модулей (например, сохранение трека в TrackList)
@@ -539,7 +558,7 @@ export default function App() {
         refillFlow(queue.length, index)
       },
       onRepeat: setRepeat,
-      onError: (m) => toastRef.current(m, 'error'),
+      onError: (m, retry) => toastRef.current(m, 'error', retry ? { label: 'Повторить', run: retry } : undefined),
       onQuality: setQuality,
       onCopy: (sub, kind, approximate, main) => {
         setCopyLabel(sub)
@@ -594,6 +613,15 @@ export default function App() {
         setResolving(false)
         setSource(track?.provider === 'yandex' ? 'yandex' : 'youtube')
         toastRef.current('Продолжим с того места — нажми ▶')
+        // пока пользователь читает экран, готовим ссылки на текущий и следующий
+        // трек: тогда ▶ и «дальше» стартуют почти без паузы
+        if (track) window.setTimeout(() => void window.undertow.prewarm(track).catch(() => undefined), 500)
+        const nextTrack = saved.tracks[saved.index + 1]
+        if (nextTrack) window.setTimeout(() => void window.undertow.prewarm(nextTrack).catch(() => undefined), 3000)
+        for (let ahead = 2; ahead <= 4; ahead += 1) {
+          const t = saved.tracks[saved.index + ahead]
+          if (t) window.setTimeout(() => void window.undertow.prewarm(t).catch(() => undefined), 3500 + ahead * 700)
+        }
       } catch {
         /* сохранённой очереди нет — обычный пустой старт */
       }
@@ -878,7 +906,7 @@ export default function App() {
       hoverTimer.current = setTimeout(() => {
         pendingWarmRef.current = t
         void processWarm()
-      }, 350)
+      }, 250)
     },
     [snap.trackId, processWarm]
   )
@@ -1011,32 +1039,33 @@ export default function App() {
           </span>
         </div>
         <span className="titlebar-spacer" />
-        <span className="status-chip" title={primaryLabel}>
-          <span className={`dot${state?.youtube.ready || state?.yandex.active ? '' : ' bad'}`} />
-          <span className="status-text">{primaryLabel}</span>
-        </span>
         <button
           className={`status-chip dpi-chip ${dpi?.state === 'on' || dpi?.running ? 'on' : 'off'}`}
           onClick={() => {
             closeBrowse()
+            setSettingsFocus('dpi')
             setView('settings')
           }}
           title={
             dpi === null
-              ? 'Проверяю обход DPI'
+              ? 'Проверяю UndertowDPI'
               : dpi.state === 'on'
-                ? 'Обход DPI включён'
+                ? 'UndertowDPI включён'
                 : dpi.state === 'starting'
-                  ? 'Обход DPI запускается'
+                  ? 'UndertowDPI запускается'
                   : dpi.state === 'error'
-                    ? `Обход DPI: ${dpi.error ?? 'ошибка'}`
-                    : 'Обход DPI выключен — открыть настройки'
+                    ? `UndertowDPI: ${dpi.error ?? 'ошибка'}`
+                    : 'UndertowDPI выключен — открыть настройки'
           }
-          aria-label="Обход DPI"
+          aria-label="UndertowDPI"
         >
           <span className={`dot${dpi?.state === 'on' || dpi?.running ? '' : ' yt'}`} />
-          <span>DPI</span>
+          <span>UndertowDPI</span>
         </button>
+        <span className="status-chip" title={primaryLabel}>
+          <span className={`dot${state?.youtube.ready || state?.yandex.active ? '' : ' bad'}`} />
+          <span className="status-text">{primaryLabel}</span>
+        </span>
         <button
           className="titlebar-mini"
           onClick={() => void window.undertow.setMini(true)}
@@ -1052,6 +1081,7 @@ export default function App() {
           view={view}
           onChange={(v) => {
             closeBrowse()
+            setSettingsFocus(null)
             setView(v)
           }}
           state={state}
@@ -1208,6 +1238,8 @@ export default function App() {
               onNormalize={setNormalize}
               dpi={dpi}
               onDpi={setDpi}
+              focus={settingsFocus}
+              onFocusDone={() => setSettingsFocus(null)}
             />
           )}
 
@@ -1488,7 +1520,18 @@ export default function App() {
       <div className="toasts">
         {toasts.map((t) => (
           <div key={t.id} className={`toast${t.kind === 'error' ? ' error' : ''}`}>
-            {t.text}
+            <span>{t.text}</span>
+            {t.action && (
+              <button
+                className="toast-action"
+                onClick={() => {
+                  t.action?.run()
+                  setToasts((prev) => prev.filter((x) => x.id !== t.id))
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>

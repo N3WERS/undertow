@@ -72,6 +72,8 @@ export interface ResolvedStream {
   variantVideoId?: string
   /** id YouTube-видео, если звук пришёл с YouTube (для локального сохранения) */
   videoId?: string
+  /** ссылка получена быстрым InnerTube-путём: первые 1 МиБ, дальше fallback */
+  fast?: boolean
   /** найдена не точная копия, а близкий вариант */
   fallbackApprox?: boolean
 }
