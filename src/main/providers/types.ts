@@ -27,7 +27,7 @@ export interface Track {
 
 /** Страница артиста или альбома (пока только Яндекс). */
 export interface BrowsePage {
-  kind: 'artist' | 'album'
+  kind: 'artist' | 'album' | 'playlist'
   id: string
   title: string
   subtitle: string

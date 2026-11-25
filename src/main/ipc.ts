@@ -142,6 +142,7 @@ export function registerIpc(): void {
   ipcMain.handle('rec:clear-hidden', async () => providers.clearHiddenSections())
 
   ipcMain.handle('page:artist', async (_e, ref: { id?: string; name?: string }) => providers.artistPage(ref ?? {}))
+  ipcMain.handle('page:playlist', async (_e, id: string) => providers.playlistPage(String(id ?? '')))
   ipcMain.handle(
     'page:album',
     async (_e, ref: { id?: string; title?: string; artist?: string; trackTitle?: string }) =>

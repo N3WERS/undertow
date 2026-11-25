@@ -463,6 +463,7 @@ export interface SearchAll {
   tracks: Track[]
   albums: { id: string; title: string; year?: string; coverUrl?: string; type?: 'single' | 'ep' | 'album' }[]
   artists: { id: string; name: string; coverUrl?: string }[]
+  playlists: { id: string; title: string; subtitle?: string; coverUrl?: string }[]
 }
 
 /**
@@ -472,17 +473,22 @@ export interface SearchAll {
  */
 export async function searchAll(query: string): Promise<SearchAll> {
   const term = String(query ?? '').trim()
-  if (!term) return { tracks: [], albums: [], artists: [] }
+  if (!term) return { tracks: [], albums: [], artists: [], playlists: [] }
   // Весь каталог — YouTube Music, чтобы трек, альбом и артист были из одного
   // источника. Яндекс тут только источник звука, когда подключён Плюс.
   const music = await youtube
     .musicSearchAll(term)
-    .catch(() => ({ tracks: [] as Track[], albums: [], artists: [] }))
+    .catch(() => ({ tracks: [] as Track[], albums: [], artists: [], playlists: [] }))
   let tracks = music.tracks
   if (!tracks.length) {
     tracks = await youtube.search(term, 20).catch(() => [] as Track[])
   }
-  return { tracks: tracks.slice(0, 30), albums: music.albums, artists: music.artists }
+  return {
+    tracks: tracks.slice(0, 30),
+    albums: music.albums,
+    artists: music.artists,
+    playlists: music.playlists ?? []
+  }
 }
 
 /* --------------------------------- тексты --------------------------------- */
@@ -641,6 +647,10 @@ export async function artistPage(ref: PageRef): Promise<BrowsePage> {
  * Страница альбома: с Яндексом — настоящий альбом по id, без него — поиск
  * «артист + название» (альбомов у YouTube нет, честно показываем треки).
  */
+export function playlistPage(id: string): Promise<BrowsePage> {
+  return browse.youtubePlaylistPage(String(id ?? ''))
+}
+
 export async function albumPage(ref: {
   id?: string
   title?: string

@@ -242,6 +242,20 @@ async function albumPageFromId(id: string): Promise<BrowsePage> {
   }
 }
 
+export async function youtubePlaylistPage(id: string): Promise<BrowsePage> {
+  const page = await youtube.musicPlaylist(id)
+  return {
+    kind: 'playlist',
+    id: `yt-playlist:${page.id}`,
+    title: page.title,
+    subtitle: [page.subtitle, page.tracks.length ? `${page.tracks.length} треков` : null]
+      .filter(Boolean)
+      .join(' · '),
+    coverUrl: page.coverUrl,
+    tracks: page.tracks
+  }
+}
+
 /**
  * Страница альбома без Яндекс Плюса.
  *

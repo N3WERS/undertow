@@ -97,6 +97,10 @@ export async function fastAudio(videoId: string, timeoutMs = 1200): Promise<Fast
       return null
     }
     const best = formats.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0]
+    if (!best || typeof best.url !== 'string') {
+      log('fast miss', videoId, 'no best format')
+      return null
+    }
     const out: FastAudio = {
       url: best.url as string,
       mime: (best.mime_type || 'audio/mp4').split(';')[0],

@@ -184,20 +184,29 @@ function collectItems(node: unknown, out: ParserItem[] = [], depth = 0): ParserI
 /* ------------------------------- методы --------------------------------- */
 
 /** Поиск сразу в трёх разрезах YouTube Music: треки, альбомы, артисты. */
+export interface YmPlaylistRef {
+  id: string
+  title: string
+  subtitle?: string
+  coverUrl?: string
+}
+
 export interface YmSearchAll {
   tracks: Track[]
   albums: YmAlbumRef[]
   artists: YmArtistRef[]
+  playlists: YmPlaylistRef[]
 }
 
 export async function musicSearchAll(query: string): Promise<YmSearchAll> {
   const q = query.trim()
-  if (!q) return { tracks: [], albums: [], artists: [] }
+  if (!q) return { tracks: [], albums: [], artists: [], playlists: [] }
   const yt = await client()
-  const [songs, albums, artists] = await Promise.all([
+  const [songs, albums, artists, playlists] = await Promise.all([
     yt.music.search(q, { type: 'song' }).catch(() => null),
     yt.music.search(q, { type: 'album' }).catch(() => null),
-    yt.music.search(q, { type: 'artist' }).catch(() => null)
+    yt.music.search(q, { type: 'artist' }).catch(() => null),
+    yt.music.search(q, { type: 'playlist' }).catch(() => null)
   ])
   const tracks = dedupe(
     collectItems(songs)
@@ -214,7 +223,52 @@ export async function musicSearchAll(query: string): Promise<YmSearchAll> {
       .map(artistRefOf)
       .filter((a): a is YmArtistRef => a !== null)
   ).slice(0, 12)
-  return { tracks, albums: albumRefs, artists: artistRefs }
+  const playlistRefs = dedupe(
+    collectItems(playlists)
+      .map(playlistRefOf)
+      .filter((p): p is YmPlaylistRef => p !== null)
+  ).slice(0, 12)
+  return { tracks, albums: albumRefs, artists: artistRefs, playlists: playlistRefs }
+}
+
+function playlistRefOf(item: ParserItem): YmPlaylistRef | null {
+  const id = typeof item.id === 'string' ? item.id : ''
+  const title = text(item.title) || text(item.name)
+  if (!id || !title) return null
+  if (String(item.item_type ?? '') !== 'playlist' && !id.startsWith('VL')) return null
+  return {
+    id,
+    title,
+    subtitle: text(item.subtitle) || undefined,
+    coverUrl: bigCover(coverOf(item))
+  }
+}
+
+/** Открывает плейлист YouTube Music по id из поиска (обычно VLPL…). */
+export async function musicPlaylist(id: string): Promise<{
+  id: string
+  title: string
+  subtitle: string
+  coverUrl?: string
+  tracks: Track[]
+}> {
+  const yt = await client()
+  const page = (await yt.music.getPlaylist(id)) as unknown as ParserItem
+  const header = (page.header ?? {}) as ParserItem
+  const title = text(header.title) || text(page.title) || 'Плейлист'
+  const subtitle = text(header.subtitle) || 'Плейлист YouTube Music'
+  const tracks = dedupe(
+    collectItems(page)
+      .map((item) => musicTrack(item))
+      .filter((t): t is Track => t !== null && t.playable)
+  )
+  return {
+    id,
+    title,
+    subtitle,
+    coverUrl: bigCover(coverOf(header)) ?? bigCover(coverOf(page)),
+    tracks
+  }
 }
 
 /** Лента «Обзор»: Новые альбомы и синглы / В тренде / Новые клипы. */

@@ -260,7 +260,7 @@ export default function App() {
 
   /** Куда ведёт переход: id (Яндекс) или имя (YouTube-страница без id). */
   interface BrowseTarget {
-    kind: 'artist' | 'album'
+    kind: 'artist' | 'album' | 'playlist'
     id?: string
     name?: string
     title: string
@@ -284,12 +284,14 @@ export default function App() {
       const page =
         target.kind === 'artist'
           ? await window.undertow.artistPage({ id: target.id, name: target.name ?? target.title })
-          : await window.undertow.albumPage({
-              id: target.id,
-              title: target.title,
-              artist: target.artist,
-              trackTitle: target.trackTitle
-            })
+          : target.kind === 'playlist'
+            ? await window.undertow.playlistPage(target.id ?? '')
+            : await window.undertow.albumPage({
+                id: target.id,
+                title: target.title,
+                artist: target.artist,
+                trackTitle: target.trackTitle
+              })
       setBrowsePage(page)
     } catch (e) {
       setBrowseError(e instanceof Error ? e.message : String(e))
@@ -320,6 +322,11 @@ export default function App() {
         artist: target.artist,
         trackTitle: target.trackTitle
       }),
+    [openPage]
+  )
+  const openPlaylist = useCallback(
+    (target: { id: string; title: string }) =>
+      openPage({ kind: 'playlist', id: target.id, title: target.title }),
     [openPage]
   )
 
@@ -1183,6 +1190,7 @@ export default function App() {
               onAddToQueue={addToQueue}
               onOpenArtist={openArtist}
               onOpenAlbum={openAlbum}
+              onOpenPlaylist={openPlaylist}
               onAddToPlaylist={setPickerTrack}
               onSimilar={(t) => void startSimilar(t)}
             />
@@ -1410,7 +1418,7 @@ export default function App() {
           normalize={normalize}
           onNormalize={setNormalize}
           liked={track ? likedIds.has(track.id) : false}
-          onLike={() => toggleLike(track)}
+          onLike={() => track && toggleLike(track)}
           onToggle={toggle}
           onNext={() => go(1)}
           onPrev={() => go(-1)}
@@ -1494,6 +1502,8 @@ export default function App() {
           queueIndex={queueState.index}
           shuffled={queueState.shuffled}
           repeat={repeat}
+          liked={track ? likedIds.has(track.id) : false}
+          onLike={() => track && toggleLike(track)}
           onToggle={toggle}
           onNext={() => go(1)}
           onPrev={() => go(-1)}

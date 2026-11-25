@@ -126,8 +126,8 @@ export function registerStreamFallback(fastUrl: string, fullUrl: Promise<string>
       throw e
     })
   promise.catch(() => {})
-  fallbacks.set(key, { promise, expires: Date.now() + 15 * 60_000 })
-  if (fallbacks.size > 64) {
+  fallbacks.set(key, { promise, expires: Date.now() + 4 * 60 * 60_000 })
+  if (fallbacks.size > 512) {
     const oldest = [...fallbacks.entries()].sort((a, b) => a[1].expires - b[1].expires)[0]
     if (oldest) fallbacks.delete(oldest[0])
   }

@@ -4,7 +4,7 @@ import TrackList from './TrackList'
 import { IconBookmark, IconPlay, IconRadio } from './Icons'
 
 interface Props {
-  kind: 'artist' | 'album'
+  kind: 'artist' | 'album' | 'playlist'
   loading: boolean
   error: string | null
   page: BrowsePage | null
@@ -96,7 +96,9 @@ export default function BrowseView({
       <button className="back-btn" onClick={onBack} title="Назад">
         ←
       </button>
-      <span className="browse-kicker">{kind === 'artist' ? 'Артист' : 'Альбом'}</span>
+      <span className="browse-kicker">
+        {kind === 'artist' ? 'Артист' : kind === 'playlist' ? 'Плейлист' : 'Альбом'}
+      </span>
     </div>
   )
 

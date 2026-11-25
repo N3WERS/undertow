@@ -1878,6 +1878,41 @@ img {
 .now-title-row .now-title {
   min-width: 0;
 }
+.now-title-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.now-title-wrap:hover::after {
+  content: attr(data-full);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 9px);
+  z-index: 60;
+  width: max-content;
+  max-width: min(360px, 50vw);
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(8, 13, 19, 0.96);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+.now-title-wrap:hover::after {
+  opacity: 1;
+  transform: none;
+}
 .now-title {
   font-size: 13.5px;
   font-weight: 540;
@@ -4790,6 +4825,72 @@ img {
   opacity: 1;
 }
 
+/* история поиска */
+.search-history {
+  margin: -8px 0 20px;
+}
+.search-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  color: var(--text-mute);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.search-history-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-mute);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+.search-history-clear:hover {
+  color: #ff9a9a;
+  background: rgba(255, 107, 107, 0.08);
+}
+.search-history-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.search-history-chip {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.search-history-chip:hover {
+  color: var(--text);
+  border-color: rgba(55, 214, 207, 0.32);
+  background: rgba(55, 214, 207, 0.07);
+}
+
 /* ============ Поиск: артисты и альбомы ============ */
 .search-artist-row {
   display: flex;
@@ -6943,6 +7044,9 @@ img {
   }
 }
 @media (max-width: 1160px) {
+  .now-title-row .now-title {
+    min-width: 9ch;
+  }
   .now-title-row .year-pill,
   .now-title-row .quality,
   .now-title-row .src-pill {
@@ -7219,6 +7323,48 @@ img {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: rgba(154, 171, 192, 0.74);
+}
+.mini-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+}
+.mini-action {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(154, 171, 192, 0.6);
+  cursor: pointer;
+  transition:
+    color 0.16s var(--ease),
+    background 0.16s var(--ease),
+    border-color 0.16s var(--ease);
+}
+.mini-action:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.055);
+}
+.mini-action.like:hover:not(:disabled),
+.mini-action.like.on {
+  color: #f2547d;
+  background: rgba(242, 84, 125, 0.1);
+}
+.mini-action.save.on {
+  color: #7ceee6;
+  background: rgba(94, 234, 212, 0.1);
+}
+.mini-action.save.saving {
+  color: var(--accent);
+}
+.mini-action:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 .mini-title {
   margin-top: 7px;

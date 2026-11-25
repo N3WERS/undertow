@@ -728,6 +728,9 @@ export class AudioEngine {
     window.undertow.log('retry start', track.id)
     this.retrying = true
     this.clearLoadTimer()
+    // Ошибка может случиться в середине/конце трека. Запоминаем позицию до
+    // сброса src, иначе retry всегда начинал бы с 0:00.
+    const resumeAt = Number.isFinite(el.currentTime) && el.currentTime > 1 ? el.currentTime : 0
     try {
       const stream = await withTimeout(
         window.undertow.resolve(track.id, true, track),
@@ -742,7 +745,37 @@ export class AudioEngine {
       this.loadedInfo[this.active] = stream
       this.emitQuality(stream.mime, stream.bitrateKbps)
       this.emitCopy(track)
+
+      let seekDone: Promise<void> = Promise.resolve()
+      if (resumeAt > 1) {
+        let resolveSeek: (() => void) | null = null
+        seekDone = new Promise<void>((r) => {
+          resolveSeek = r
+        })
+        const seek = (): void => {
+          if (this.destroyed || this.queue[this.index]?.id !== track.id) return
+          try {
+            const end = Number.isFinite(el.duration) && el.duration > 0 ? el.duration - 0.5 : resumeAt
+            el.currentTime = Math.max(0, Math.min(resumeAt, end))
+            window.undertow.log('retry resume', { id: track.id, at: Math.round(el.currentTime) })
+          } catch {
+            /* метаданные ещё не готовы — сработает canplay */
+          }
+          resolveSeek?.()
+        }
+        if (el.readyState >= 1) seek()
+        else {
+          el.addEventListener('loadedmetadata', seek, { once: true })
+          el.addEventListener('canplay', seek, { once: true })
+        }
+      }
+
       await this.ctx?.resume()
+      // Даём новому src подняться и перескочить на прежнюю позицию, затем
+      // запускаем. Если метаданные не пришли за 1,2 с — не блокируем playback.
+      if (resumeAt > 1) {
+        await Promise.race([seekDone, new Promise((r) => setTimeout(r, 1200))])
+      }
       void el.play().catch((e) => {
         if (!playInterrupted(e)) this.handlers.onError(`Не играет: ${(e as Error).message}`)
       })

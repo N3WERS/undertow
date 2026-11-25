@@ -20,7 +20,7 @@ export interface Track {
 }
 
 export interface BrowsePage {
-  kind: 'artist' | 'album'
+  kind: 'artist' | 'album' | 'playlist'
   id: string
   title: string
   subtitle: string
@@ -180,10 +180,18 @@ export interface ArtistRef {
   coverUrl?: string
 }
 
+export interface PlaylistRef {
+  id: string
+  title: string
+  subtitle?: string
+  coverUrl?: string
+}
+
 export interface SearchAll {
   tracks: Track[]
   albums: AlbumRef[]
   artists: ArtistRef[]
+  playlists: PlaylistRef[]
 }
 
 export interface LyricLine {
@@ -253,6 +261,7 @@ export interface UndertowApi {
   hiddenSections(): Promise<string[]>
   clearHiddenSections(): Promise<string[]>
   artistPage(ref: { id?: string; name?: string }): Promise<BrowsePage>
+  playlistPage(id: string): Promise<BrowsePage>
   albumPage(ref: { id?: string; title?: string; artist?: string; trackTitle?: string }): Promise<BrowsePage>
   albumsList(): Promise<SavedAlbum[]>
   albumsSave(page: BrowsePage): Promise<SavedAlbum[]>

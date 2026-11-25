@@ -202,7 +202,9 @@ export default function PlayerBar(p: Props) {
         </button>
         <div className="now-text">
           <div className="now-title-row">
-            <span className="now-title">{p.track?.title ?? 'Ничего не играет'}</span>
+            <span className="now-title-wrap" data-full={p.track?.title ?? 'Ничего не играет'}>
+              <span className="now-title">{p.track?.title ?? 'Ничего не играет'}</span>
+            </span>
             {p.track ? (
               <>
                 {p.source && (

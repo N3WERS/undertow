@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 import {
+  IconCheck,
   IconClose,
+  IconDownload,
   IconExpand,
+  IconHeart,
   IconMute,
   IconNext,
   IconPause,
@@ -16,6 +19,7 @@ import {
 } from './Icons'
 import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
+import { removeOffline, saveTrack, useOffline } from '../offline'
 import type { RepeatMode } from '../audio/engine'
 import type { Track } from '../types'
 
@@ -31,6 +35,8 @@ interface Props {
   queueIndex: number
   shuffled: boolean
   repeat: RepeatMode
+  liked: boolean
+  onLike: () => void
   onToggle: () => void
   onNext: () => void
   onPrev: () => void
@@ -57,6 +63,8 @@ export default function MiniPlayer({
   queueIndex,
   shuffled,
   repeat,
+  liked,
+  onLike,
   onToggle,
   onNext,
   onPrev,
@@ -68,7 +76,10 @@ export default function MiniPlayer({
   onRestore
 }: Props): JSX.Element {
   const live = useProgress()
+  const offline = useOffline()
   const [queueOpen, setQueueOpen] = useState(false)
+  const savedLocal = track ? offline.ids.has(track.id) : false
+  const saveProgress = track ? offline.progress[track.id] : undefined
   const progress = track ? live.time : 0
   const total = live.duration > 0 ? live.duration : duration
   const percent = total > 0 ? Math.min(100, Math.max(0, (progress / total) * 100)) : 0
@@ -164,6 +175,38 @@ export default function MiniPlayer({
                 <span className="mini-times">
                   {fmtTime(progress)} / {fmtTime(total)}
                 </span>
+                <div className="mini-actions">
+                  <button
+                    className={`mini-action like${liked ? ' on' : ''}`}
+                    onClick={onLike}
+                    disabled={!track}
+                    title={liked ? 'Убрать из «Мне нравится»' : 'Мне нравится'}
+                    aria-label={liked ? 'Убрать из «Мне нравится»' : 'Мне нравится'}
+                    aria-pressed={liked}
+                  >
+                    <IconHeart width={12} height={12} filled={liked} />
+                  </button>
+                  <button
+                    className={`mini-action save${savedLocal ? ' on' : ''}${saveProgress ? ' saving' : ''}`}
+                    onClick={() => {
+                      if (!track || saveProgress) return
+                      if (savedLocal) void removeOffline(track.id).catch(() => undefined)
+                      else void saveTrack(track).catch(() => undefined)
+                    }}
+                    disabled={!track || Boolean(saveProgress)}
+                    title={
+                      saveProgress
+                        ? `Сохраняю… ${saveProgress.percent ?? 0}%`
+                        : savedLocal
+                          ? 'Удалить локальную копию'
+                          : 'Сохранить трек локально'
+                    }
+                    aria-label={savedLocal ? 'Удалить локальную копию' : 'Сохранить трек локально'}
+                    aria-pressed={savedLocal}
+                  >
+                    {savedLocal ? <IconCheck width={12} height={12} /> : <IconDownload width={12} height={12} />}
+                  </button>
+                </div>
               </div>
 
               <div className={`mini-title${track ? '' : ' empty'}`} title={track?.title}>

@@ -102,6 +102,9 @@ function toTrack(trackId: string, m: Mapping): Track {
 
 const STORE_LIMIT = 5000
 
+/** Видео, которые уже не отдали поток: не выбираем их повторно при redo. */
+const badVideos = new Set<string>()
+
 interface Candidate {
   track: Track
   delta: number
@@ -124,7 +127,13 @@ function rate(track: Track, results: Track[]): Candidate[] {
   const originalHasBad = BAD_VERSION.test(track.title)
 
   return results
-    .filter((r) => r.playable && r.durationSec != null && r.durationSec > 20)
+    .filter(
+      (r) =>
+        r.playable &&
+        r.durationSec != null &&
+        r.durationSec > 20 &&
+        !badVideos.has(r.id.replace(/^yt:/, ''))
+    )
     .map((r) => {
       const delta = want != null && r.durationSec != null ? Math.abs(r.durationSec - want) : 0
       let titleScore = Math.max(overlap(track.title, r.title), overlap(track.artist, r.title) * 0.7)
@@ -299,6 +308,7 @@ export function unpin(trackId: string): void {
 
 export async function pin(track: Track, candidate: FallbackCandidateView): Promise<void> {
   const data = load()
+  badVideos.delete(candidate.videoId)
   data[track.id] = {
     videoId: candidate.videoId,
     title: candidate.title,
@@ -331,7 +341,7 @@ async function fastTry(track: Track): Promise<{ mapping: Mapping; stream: Resolv
 
   try {
     const one = await ytSearchResolve(query)
-    if (!one) return null
+    if (!one || badVideos.has(one.videoId)) return null
 
     const found: Track = {
       id: `yt:${one.videoId}`,
@@ -467,7 +477,8 @@ async function toYoutubeInner(track: Track, redo: boolean): Promise<FallbackResu
     }
   } catch (e) {
     if (!redo) {
-      // видео могло исчезнуть — ищем заново один раз
+      // видео могло исчезнуть — запоминаем его и ищем заново один раз
+      badVideos.add(mapping.videoId)
       delete data[track.id]
       save()
       return toYoutube(track, true)

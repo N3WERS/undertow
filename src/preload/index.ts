@@ -42,6 +42,7 @@ const api = {
   hiddenSections: () => ipcRenderer.invoke('rec:hidden'),
   clearHiddenSections: () => ipcRenderer.invoke('rec:clear-hidden'),
   artistPage: (ref: { id?: string; name?: string }) => ipcRenderer.invoke('page:artist', ref),
+  playlistPage: (id: string) => ipcRenderer.invoke('page:playlist', id),
   albumPage: (ref: { id?: string; title?: string; artist?: string; trackTitle?: string }) =>
     ipcRenderer.invoke('page:album', ref),
   artistRadio: (ref: { id?: string; name?: string }) => ipcRenderer.invoke('radio:artist', ref),

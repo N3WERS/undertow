@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AlbumRef, ArtistRef, Track } from '../types'
+import type { AlbumRef, ArtistRef, PlaylistRef, Track } from '../types'
 import TrackList from './TrackList'
-import { IconPlay, IconSearch } from './Icons'
+import { IconPlay, IconQueue, IconSearch, IconX } from './Icons'
 
 interface Props {
   currentId: string | null
@@ -13,6 +13,7 @@ interface Props {
   onHover?: (track: Track) => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
+  onOpenPlaylist?: (target: { id: string; title: string }) => void
   onAddToPlaylist?: (track: Track) => void
   onSimilar?: (track: Track) => void
   onAddToQueue?: (track: Track) => void
@@ -21,6 +22,20 @@ interface Props {
 const SUGGESTIONS = ['Molchat Doma', 'Tame Impala', 'новинки 2026', 'phonk', 'Radiohead', 'Кино']
 
 const TYPE_LABEL: Record<string, string> = { single: 'сингл', ep: 'EP', album: 'альбом' }
+const HISTORY_KEY = 'undertow.searchHistory'
+
+function readHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).slice(0, 5)
+      : []
+  } catch {
+    return []
+  }
+}
 
 export default function SearchView({
   currentId,
@@ -33,6 +48,7 @@ export default function SearchView({
   onAddToQueue,
   onOpenArtist,
   onOpenAlbum,
+  onOpenPlaylist,
   onAddToPlaylist,
   onSimilar
 }: Props) {
@@ -40,6 +56,8 @@ export default function SearchView({
   const [tracks, setTracks] = useState<Track[]>([])
   const [albums, setAlbums] = useState<AlbumRef[]>([])
   const [artists, setArtists] = useState<ArtistRef[]>([])
+  const [playlists, setPlaylists] = useState<PlaylistRef[]>([])
+  const [history, setHistory] = useState<string[]>(readHistory)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,6 +68,18 @@ export default function SearchView({
     inputRef.current?.focus()
   }, [])
 
+  const remember = (term: string): void => {
+    setHistory((prev) => {
+      const next = [term, ...prev.filter((x) => x.toLowerCase() !== term.toLowerCase())].slice(0, 5)
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+      } catch {
+        /* приватный режим — история просто не сохранится */
+      }
+      return next
+    })
+  }
+
   const run = async (q: string) => {
     const term = q.trim()
     if (!term || busy) return
@@ -57,12 +87,14 @@ export default function SearchView({
     setError(null)
     setAsked(true)
     lastQuery.current = term
+    remember(term)
     try {
       const found = await window.undertow.searchAll(term)
       setTracks(found.tracks)
       setAlbums(found.albums)
       setArtists(found.artists)
-      if (!found.tracks.length && !found.albums.length && !found.artists.length) {
+      setPlaylists(found.playlists ?? [])
+      if (!found.tracks.length && !found.albums.length && !found.artists.length && !(found.playlists ?? []).length) {
         setError('Ничего не нашлось — попробуй сформулировать иначе.')
       }
     } catch (e) {
@@ -70,19 +102,20 @@ export default function SearchView({
       setTracks([])
       setAlbums([])
       setArtists([])
+      setPlaylists([])
     } finally {
       setBusy(false)
     }
   }
 
-  const empty = !tracks.length && !albums.length && !artists.length
+  const empty = !tracks.length && !albums.length && !artists.length && !playlists.length
 
   return (
     <div className="scroll search-page">
       <div className="page-head">
         <div>
           <h1>Поиск</h1>
-          <p>YouTube Music: треки, альбомы и исполнители</p>
+          <p>YouTube Music: треки, альбомы, плейлисты и исполнители</p>
         </div>
         {busy && <span className="spinner" />}
       </div>
@@ -106,6 +139,39 @@ export default function SearchView({
           <span className="kbd">Enter</span>
         </label>
       </form>
+
+      {history.length > 0 && (
+        <div className="search-history">
+          <div className="search-history-head">
+            <span>Недавние запросы</span>
+            <button
+              className="search-history-clear"
+              onClick={() => {
+                setHistory([])
+                localStorage.removeItem(HISTORY_KEY)
+              }}
+              title="Очистить историю поиска"
+            >
+              <IconX width={12} height={12} />
+              Очистить
+            </button>
+          </div>
+          <div className="search-history-row">
+            {history.map((h) => (
+              <button
+                key={h}
+                className="search-history-chip"
+                onClick={() => {
+                  setQuery(h)
+                  void run(h)
+                }}
+              >
+                {h}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!asked && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -150,6 +216,34 @@ export default function SearchView({
                   {a.coverUrl ? <img src={a.coverUrl} alt="" loading="lazy" /> : <i>{a.name.slice(0, 1)}</i>}
                 </span>
                 <span className="search-artist-name">{a.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!error && playlists.length > 0 && (
+        <section className="section fade-up search-playlists">
+          <div className="section-head">
+            <h2>Плейлисты</h2>
+            <span className="count">{playlists.length}</span>
+          </div>
+          <div className="search-album-grid">
+            {playlists.map((pl) => (
+              <button
+                key={pl.id}
+                className="search-album-card search-playlist-card"
+                onClick={() => onOpenPlaylist?.({ id: pl.id, title: pl.title })}
+                title={`Открыть плейлист: ${pl.title}`}
+              >
+                <span className="search-album-cover">
+                  {pl.coverUrl ? <img src={pl.coverUrl} alt="" loading="lazy" /> : <i>♫</i>}
+                  <span className="search-album-play">
+                    <IconQueue width={14} height={14} />
+                  </span>
+                </span>
+                <span className="search-album-title">{pl.title}</span>
+                <span className="search-album-sub">{pl.subtitle || 'плейлист'}</span>
               </button>
             ))}
           </div>
