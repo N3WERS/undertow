@@ -16,7 +16,7 @@ import PlayerBar from './components/PlayerBar'
 import NowPlaying from './components/NowPlaying'
 import MiniPlayer from './components/MiniPlayer'
 import CloseDialog from './components/CloseDialog'
-import { IconFlame, IconShrink } from './components/Icons'
+import { IconShrink } from './components/Icons'
 import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
@@ -1034,7 +1034,7 @@ export default function App() {
           }
           aria-label="Обход DPI"
         >
-          <IconFlame className="dpi-flame" width={13} height={13} />
+          <span className={`dot${dpi?.state === 'on' || dpi?.running ? '' : ' yt'}`} />
           <span>DPI</span>
         </button>
         <button
