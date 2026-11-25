@@ -92,6 +92,7 @@ export interface DpiStatus {
   running: boolean
   state: 'off' | 'on' | 'starting' | 'stopping' | 'error' | 'unavailable'
   path: string | null
+  bundled: boolean
   error: string | null
 }
 

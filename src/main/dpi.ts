@@ -29,6 +29,7 @@ export interface DpiStatus {
   running: boolean
   state: DpiState
   path: string | null
+  bundled: boolean
   error: string | null
 }
 
@@ -42,6 +43,7 @@ interface Install {
   exe: string
   quic: string
   tls: string
+  bundled: boolean
   missing: string[]
 }
 
@@ -87,6 +89,12 @@ function writeConfig(config: DpiConfig): void {
   writeFileSync(configPath(), JSON.stringify(config, null, 2), 'utf8')
 }
 
+function bundledRoot(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'zapret')
+    : join(app.getAppPath(), 'resources', 'zapret')
+}
+
 function candidateRoots(): string[] {
   const desktop = app.getPath('desktop')
   const downloads = app.getPath('downloads')
@@ -101,7 +109,7 @@ function candidateRoots(): string[] {
   ]
 }
 
-function locate(root: string): Install | null {
+function locate(root: string, bundled = false): Install | null {
   const bin = join(root, 'bin')
   if (!existsSync(join(bin, 'winws.exe'))) return null
   const names = ['winws.exe', 'WinDivert.dll', 'WinDivert64.sys', 'cygwin1.dll']
@@ -116,21 +124,30 @@ function locate(root: string): Install | null {
     exe: join(bin, 'winws.exe'),
     quic,
     tls,
+    bundled,
     missing
   }
 }
 
 function install(): Install | null {
   const configured = readConfig().zapretPath
-  if (configured) {
-    const found = locate(configured)
-    if (found) return found
+  const bundled = bundledRoot()
+  const roots = [...(configured ? [configured] : []), bundled, ...candidateRoots()]
+  const seen = new Set<string>()
+  let incomplete: Install | null = null
+
+  // Сначала ищем полный набор. Если у выбранной папки чего-то не хватает,
+  // пробуем встроенную копию, а уже потом показываем ошибку.
+  for (const root of roots) {
+    const key = root.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    const found = locate(root, key === bundled.toLowerCase())
+    if (!found) continue
+    if (found.missing.length === 0) return found
+    if (!incomplete) incomplete = found
   }
-  for (const root of candidateRoots()) {
-    const found = locate(root)
-    if (found) return found
-  }
-  return null
+  return incomplete
 }
 
 function psQuote(text: string): string {
@@ -294,6 +311,7 @@ export async function getStatus(): Promise<DpiStatus> {
       running: false,
       state: 'unavailable',
       path: null,
+      bundled: false,
       error: 'Обход DPI сейчас реализован только для Windows.'
     }
   }
@@ -307,6 +325,7 @@ export async function getStatus(): Promise<DpiStatus> {
       running: Boolean(pid),
       state: 'error',
       path: found.root,
+      bundled: found.bundled,
       error: `В папке zapret не хватает: ${found.missing.join(', ')}`
     }
   }
@@ -318,6 +337,7 @@ export async function getStatus(): Promise<DpiStatus> {
       running: Boolean(pid),
       state: busy,
       path: found?.root ?? null,
+      bundled: Boolean(found?.bundled),
       error: null
     }
   }
@@ -328,6 +348,7 @@ export async function getStatus(): Promise<DpiStatus> {
     running: Boolean(pid),
     state: pid ? 'on' : lastError ? 'error' : 'off',
     path: found?.root ?? readConfig().zapretPath ?? null,
+    bundled: Boolean(found?.bundled),
     error: pid ? null : lastError
   }
 }
@@ -338,7 +359,7 @@ export async function setEnabled(on: boolean): Promise<DpiStatus> {
 
   const found = install()
   if (on) {
-    if (!found) throw new Error('Папка zapret не найдена. Укажи её в настройках.')
+    if (!found) throw new Error('Не найдены файлы zapret. Укажи папку в настройках.')
     if (found.missing.length > 0) {
       throw new Error(`В папке zapret не хватает: ${found.missing.join(', ')}`)
     }

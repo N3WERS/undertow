@@ -256,6 +256,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
             <p>
               YouTube в России часто открывается в разы медленнее из-за DPI. Здесь можно поднять локальный winws,
               который меняет только TLS/QUIC-пакеты к доменам YouTube и Google. Остальной трафик не трогается.
+              Встроенный набор уже в установщике; внешняя папка нужна только если хочется свою версию.
             </p>
           </div>
           <span className={`pill ${dpi?.state === 'on' ? 'ok' : 'off'}`}>{dpiLabel}</span>
@@ -285,7 +286,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
           <div>
             <span>Папка zapret</span>
             <b className="dpi-path" title={dpi?.path ?? ''}>
-              {dpi?.path ?? 'не найдена'}
+              {dpi?.bundled ? 'встроенный набор' : (dpi?.path ?? 'не найдена')}
             </b>
           </div>
           <div>
