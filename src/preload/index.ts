@@ -71,6 +71,18 @@ const api = {
   setMini: (on: boolean) => ipcRenderer.invoke('window:mini', on),
   toggleMini: () => ipcRenderer.invoke('window:mini-toggle'),
   reportPlayer: (state: unknown) => ipcRenderer.send('player:state', state),
+  closeAction: (action: 'tray' | 'quit' | 'cancel') =>
+    ipcRenderer.send('window:close-action', action),
+  onCloseRequest: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('window:close-request', handler)
+    return () => ipcRenderer.removeListener('window:close-request', handler)
+  },
+  onCloseDismiss: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('window:close-dismiss', handler)
+    return () => ipcRenderer.removeListener('window:close-dismiss', handler)
+  },
   onMiniChange: (cb: (on: boolean) => void) => {
     const handler = (_e: unknown, on: boolean) => cb(on)
     ipcRenderer.on('window:mini-changed', handler)

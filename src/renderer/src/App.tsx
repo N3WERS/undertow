@@ -15,6 +15,7 @@ import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import NowPlaying from './components/NowPlaying'
 import MiniPlayer from './components/MiniPlayer'
+import CloseDialog from './components/CloseDialog'
 import { IconShrink } from './components/Icons'
 import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
@@ -90,6 +91,7 @@ export default function App() {
   const [queueOpen, setQueueOpen] = useState(false)
   const [repeat, setRepeat] = useState<RepeatMode>('off')
   const [mini, setMini] = useState(false)
+  const [closeAsk, setCloseAsk] = useState(false)
   const [theaterOpen, setTheaterOpen] = useState(false)
   const [resolving, setResolving] = useState(false)
   useEffect(() => {
@@ -109,6 +111,20 @@ export default function App() {
       alive = false
       off()
     }
+  }, [])
+
+  useEffect(() => {
+    const offRequest = window.undertow.onCloseRequest(() => setCloseAsk(true))
+    const offDismiss = window.undertow.onCloseDismiss(() => setCloseAsk(false))
+    return () => {
+      offRequest()
+      offDismiss()
+    }
+  }, [])
+
+  const closeAction = useCallback((action: 'tray' | 'quit' | 'cancel') => {
+    setCloseAsk(false)
+    window.undertow.closeAction(action)
   }, [])
 
   useEffect(() => {
@@ -1412,6 +1428,14 @@ export default function App() {
           onShuffle={(on) => engineRef.current?.setShuffle(on)}
           onCycleRepeat={() => engineRef.current?.cycleRepeat()}
           onRestore={() => void window.undertow.setMini(false)}
+        />
+      ) : null}
+
+      {closeAsk ? (
+        <CloseDialog
+          onTray={() => closeAction('tray')}
+          onQuit={() => closeAction('quit')}
+          onCancel={() => closeAction('cancel')}
         />
       ) : null}
 

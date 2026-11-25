@@ -309,6 +309,9 @@ export interface UndertowApi {
   setMini(on: boolean): Promise<boolean>
   toggleMini(): Promise<boolean>
   reportPlayer(state: PlayerReport): void
+  closeAction(action: 'tray' | 'quit' | 'cancel'): void
+  onCloseRequest(cb: () => void): () => void
+  onCloseDismiss(cb: () => void): () => void
   onMiniChange(cb: (on: boolean) => void): () => void
   onPlayerCommand(cb: (command: PlayerCommand) => void): () => void
   onDurations(cb: (count: number) => void): () => void

@@ -27,6 +27,7 @@ let isMini = false
 let normalBounds: Rectangle | null = null
 let wasMaximized = false
 let player: PlayerReport = { playing: false, title: null, artist: null, source: null }
+let closePrompt = false
 
 const trayIconPath = (): string =>
   app.isPackaged
@@ -55,6 +56,10 @@ function showWindow(): void {
 
 function hideWindow(): void {
   if (!win || win.isDestroyed()) return
+  if (closePrompt) {
+    closePrompt = false
+    win.webContents.send('window:close-dismiss')
+  }
   win.hide()
   refreshTray()
 }
@@ -158,6 +163,16 @@ function registerWindowIpc(): void {
   ipcMain.handle('window:mini-state', () => isMini)
   ipcMain.handle('window:mini', (_e, on: unknown) => setMini(Boolean(on)))
   ipcMain.handle('window:mini-toggle', () => setMini(!isMini))
+  ipcMain.on('window:close-action', (_e, action: unknown) => {
+    if (action === 'quit') {
+      isQuitting = true
+      app.quit()
+      return
+    }
+    closePrompt = false
+    if (action === 'tray') hideWindow()
+    else if (win && !win.isDestroyed()) win.webContents.send('window:close-dismiss')
+  })
   ipcMain.on('player:state', (_e, report: Partial<PlayerReport> | null) => {
     player = {
       playing: Boolean(report?.playing),
@@ -226,17 +241,21 @@ function createWindow(): void {
   placeOnSecondDisplay(win)
   win.once('ready-to-show', () => win?.show())
 
-  // Закрытие окна не выключает музыку: приложение остаётся в трее,
-  // а полностью выходим только через пункт «Выход».
+  // Крестик не закрывает приложение молча: показываем свой диалог в стиле
+  // приложения, где можно свернуть в трей или выйти полностью.
   win.on('close', (event) => {
     if (isQuitting) return
     event.preventDefault()
-    win?.hide()
-    refreshTray()
+    if (closePrompt) return
+    closePrompt = true
+    win?.webContents.send('window:close-request')
+  })
+  // Кнопка «свернуть» тоже убирает окно в трей, а не оставляет его на панели задач.
+  win.on('minimize', () => {
+    if (!isQuitting) hideWindow()
   })
   win.on('show', refreshTray)
   win.on('hide', refreshTray)
-  win.on('minimize', refreshTray)
   win.on('restore', refreshTray)
 
   // В dev полезно видеть консоль рендерера в терминале
@@ -261,29 +280,39 @@ function createWindow(): void {
 // В dev открываем CDP (127.0.0.1:9222), чтобы можно было проверять состояние плеера
 if (!app.isPackaged) app.commandLine.appendSwitch('remote-debugging-port', '9222')
 
-app.whenReady().then(async () => {
-  app.setAppUserModelId('co.undertow.app')
-  // аудио-прокси нужен до первого resolve, иначе плеер получит прямые URL без CORS
-  await startAudioProxy()
-  setLocalRoot(offline.localRoot())
-  registerIpc()
-  registerWindowIpc()
-  createWindow()
-  createTray()
+// Второй запуск (например, клик по закреплённой иконке, когда окно спрятано
+// в трее) не создаёт новое приложение, а показывает уже работающее.
+const singleInstance = app.requestSingleInstanceLock()
+if (!singleInstance) {
+  app.quit()
+} else {
+  app.on('second-instance', () => showWindow())
 
-  // Старые записи истории сохранились без длительности — подтягиваем её
-  // в фоне, чтобы не задерживать запуск. Рендерер по событию перечитает
-  // главную и библиотеку.
-  setTimeout(() => {
-    void providers.backfillDurations().then((n) => {
-      if (n > 0 && win && !win.isDestroyed()) win.webContents.send('library:durations', n)
+  app.whenReady().then(async () => {
+    app.setAppUserModelId('co.undertow.app')
+    // аудио-прокси нужен до первого resolve, иначе плеер получит прямые URL без CORS
+    await startAudioProxy()
+    setLocalRoot(offline.localRoot())
+    registerIpc()
+    registerWindowIpc()
+    createWindow()
+    createTray()
+
+    // Старые записи истории сохранились без длительности — подтягиваем её
+    // в фоне, чтобы не задерживать запуск. Рендерер по событию перечитает
+    // главную и библиотеку.
+    setTimeout(() => {
+      void providers.backfillDurations().then((n) => {
+        if (n > 0 && win && !win.isDestroyed()) win.webContents.send('library:durations', n)
+      })
+    }, 2500)
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      else showWindow()
     })
-  }, 2500)
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
+}
 
 app.on('before-quit', () => {
   isQuitting = true
