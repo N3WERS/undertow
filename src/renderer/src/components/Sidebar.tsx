@@ -26,6 +26,7 @@ export default function Sidebar({ view, onChange, state }: Props) {
   ]
   const settings: Item = { id: 'settings', label: 'Настройки', icon: IconSettings }
   const primary = state?.primary === 'yandex' ? 'Яндекс' : 'YouTube'
+  const account = yn?.login?.trim() || null
 
   const row = ({ id, label, icon: Icon }: Item) => (
     <button
@@ -66,7 +67,9 @@ export default function Sidebar({ view, onChange, state }: Props) {
               <i className={`status-dot${yn?.active ? ' on' : ''}`} />
               Яндекс
             </span>
-            <b>{!yn?.hasToken ? 'нет токена' : yn.active ? 'Плюс' : 'без Плюса'}</b>
+            <b className="account-name" title={account ?? undefined}>
+              {!yn?.hasToken ? 'нет токена' : (account ?? 'подключён')}
+            </b>
           </div>
           <div className="row">
             <span className="foot-name">

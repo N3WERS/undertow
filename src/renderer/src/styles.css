@@ -259,6 +259,60 @@ img {
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+.status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dpi-chip {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid var(--line);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+.dpi-chip .dpi-flame {
+  flex: none;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+.dpi-chip.on {
+  color: var(--accent);
+  border-color: rgba(55, 214, 207, 0.34);
+  background: var(--accent-soft);
+}
+.dpi-chip.on .dpi-flame {
+  filter: drop-shadow(0 0 5px rgba(55, 214, 207, 0.45));
+}
+.dpi-chip.off {
+  color: var(--danger);
+  border-color: rgba(255, 107, 107, 0.28);
+  background: rgba(255, 107, 107, 0.075);
+}
+.dpi-chip.off .dpi-flame {
+  filter: drop-shadow(0 0 4px rgba(255, 107, 107, 0.28));
+}
+.dpi-chip:hover {
+  border-color: currentColor;
+}
+.dpi-chip:active {
+  transform: translateY(1px);
+}
+.dpi-chip:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
 .dot.bad {
   background: var(--danger);
   box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.14);
@@ -4978,6 +5032,13 @@ img {
 .sidebar-foot b {
   font-size: 11px;
   color: var(--text-dim);
+}
+.sidebar-foot .account-name {
+  min-width: 0;
+  max-width: 124px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .status-dot {
   width: 5px;

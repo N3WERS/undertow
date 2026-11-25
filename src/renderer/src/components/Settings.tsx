@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { DpiStatus, ProviderState } from '../types'
 import { APP_AUTHOR, APP_VERSION } from '../version'
 
@@ -10,33 +10,29 @@ interface Props {
   onCrossfade: (v: number) => void
   normalize: boolean
   onNormalize: (v: boolean) => void
+  dpi: DpiStatus | null
+  onDpi: (s: DpiStatus) => void
 }
 
-export default function Settings({ state, onState, onToast, crossfade, onCrossfade, normalize, onNormalize }: Props) {
+export default function Settings({
+  state,
+  onState,
+  onToast,
+  crossfade,
+  onCrossfade,
+  normalize,
+  onNormalize,
+  dpi,
+  onDpi
+}: Props) {
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState<'save' | 'clear' | 'refresh' | null>(null)
-  const [dpi, setDpi] = useState<DpiStatus | null>(null)
   const [dpiBusy, setDpiBusy] = useState(false)
   const yn = state?.yandex
 
-  useEffect(() => {
-    let alive = true
-    window.undertow
-      .dpiStatus()
-      .then((next) => {
-        if (alive) setDpi(next)
-      })
-      .catch(() => {
-        // настройки не должны падать из-за диагностики сети
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
-
   const refreshDpi = async () => {
     try {
-      setDpi(await window.undertow.dpiStatus())
+      onDpi(await window.undertow.dpiStatus())
     } catch (e) {
       onToast(e instanceof Error ? e.message : String(e), 'error')
     }
@@ -45,7 +41,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
   const toggleDpi = async (next: boolean) => {
     setDpiBusy(true)
     try {
-      setDpi(await window.undertow.dpiSet(next))
+      onDpi(await window.undertow.dpiSet(next))
       onToast(
         next
           ? 'Обход DPI включён — YouTube должен открываться заметно быстрее'
@@ -63,7 +59,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
     setDpiBusy(true)
     try {
       const next = await window.undertow.dpiChoose()
-      setDpi(next)
+      onDpi(next)
       if (next.path) onToast('Папка zapret сохранена')
     } catch (e) {
       onToast(e instanceof Error ? e.message : String(e), 'error')

@@ -259,20 +259,25 @@ function serviceInstalled(): Promise<boolean> {
 }
 
 async function serviceProbe(): Promise<ServiceProbe> {
-  try {
-    const reply = await serviceCommand('status', 1200)
-    const match = /^ok running=(\d) pid=(\d+) app=(\d+)$/.exec(reply)
-    if (match) {
-      return {
-        installed: true,
-        reachable: true,
-        running: match[1] === '1',
-        pid: Number(match[2]) || null,
-        appPid: Number(match[3]) || null
+  // при старте приложения служба может ещё подниматься: даём ей пару попыток,
+  // иначе плашка DPI успевает показать ошибку и висит так до следующего опроса
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const reply = await serviceCommand('status', 1500)
+      const match = /^ok running=(\d) pid=(\d+) app=(\d+)$/.exec(reply)
+      if (match) {
+        return {
+          installed: true,
+          reachable: true,
+          running: match[1] === '1',
+          pid: Number(match[2]) || null,
+          appPid: Number(match[3]) || null
+        }
       }
+    } catch {
+      // службы может не быть — тогда работаем через старый UAC-супервизор
     }
-  } catch {
-    // службы может не быть — тогда работаем через старый UAC-супервизор
+    if (attempt < 2) await sleep(250 + attempt * 350)
   }
   return {
     installed: await serviceInstalled(),

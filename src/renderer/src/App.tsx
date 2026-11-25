@@ -16,7 +16,7 @@ import PlayerBar from './components/PlayerBar'
 import NowPlaying from './components/NowPlaying'
 import MiniPlayer from './components/MiniPlayer'
 import CloseDialog from './components/CloseDialog'
-import { IconShrink } from './components/Icons'
+import { IconFlame, IconShrink } from './components/Icons'
 import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
@@ -27,6 +27,7 @@ import type {
   ReleaseItem,
   SavedAlbum,
   ChartScope,
+  DpiStatus,
   Section,
   TopChart,
   Track,
@@ -70,6 +71,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [homeError, setHomeError] = useState<string | null>(null)
   const [state, setState] = useState<ProviderState | null>(null)
+  const [dpi, setDpi] = useState<DpiStatus | null>(null)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const [snap, setSnap] = useState<Snapshot>(EMPTY_SNAP)
@@ -110,6 +112,26 @@ export default function App() {
     return () => {
       alive = false
       off()
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const refresh = () => {
+      void window.undertow
+        .dpiStatus()
+        .then((next) => {
+          if (alive) setDpi(next)
+        })
+        .catch(() => undefined)
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
     }
   }, [])
 
@@ -989,10 +1011,32 @@ export default function App() {
           </span>
         </div>
         <span className="titlebar-spacer" />
-        <span className="status-chip">
+        <span className="status-chip" title={primaryLabel}>
           <span className={`dot${state?.youtube.ready || state?.yandex.active ? '' : ' bad'}`} />
-          {primaryLabel}
+          <span className="status-text">{primaryLabel}</span>
         </span>
+        <button
+          className={`status-chip dpi-chip ${dpi?.state === 'on' || dpi?.running ? 'on' : 'off'}`}
+          onClick={() => {
+            closeBrowse()
+            setView('settings')
+          }}
+          title={
+            dpi === null
+              ? 'Проверяю обход DPI'
+              : dpi.state === 'on'
+                ? 'Обход DPI включён'
+                : dpi.state === 'starting'
+                  ? 'Обход DPI запускается'
+                  : dpi.state === 'error'
+                    ? `Обход DPI: ${dpi.error ?? 'ошибка'}`
+                    : 'Обход DPI выключен — открыть настройки'
+          }
+          aria-label="Обход DPI"
+        >
+          <IconFlame className="dpi-flame" width={13} height={13} />
+          <span>DPI</span>
+        </button>
         <button
           className="titlebar-mini"
           onClick={() => void window.undertow.setMini(true)}
@@ -1162,6 +1206,8 @@ export default function App() {
               onCrossfade={setCrossfade}
               normalize={normalize}
               onNormalize={setNormalize}
+              dpi={dpi}
+              onDpi={setDpi}
             />
           )}
 
