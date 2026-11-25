@@ -1,6 +1,6 @@
 {
   "name": "undertow",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "type": "module",
   "description": "Undertow — personal music streaming client",
@@ -9,8 +9,9 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "dist": "electron-vite build && electron-builder --win --publish never",
-    "dist:dir": "electron-vite build && electron-builder --win --dir"
+    "dist": "npm run build:helper && electron-vite build && electron-builder --win --publish never",
+    "dist:dir": "npm run build:helper && electron-vite build && electron-builder --win --dir",
+    "build:helper": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-helper.ps1"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
@@ -64,12 +65,13 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Undertow",
-      "artifactName": "Undertow-Setup-${version}.${ext}"
+      "artifactName": "Undertow-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     }
   }
 }

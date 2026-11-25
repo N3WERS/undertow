@@ -1,17 +1,18 @@
 /**
  * Обход DPI для YouTube на Windows.
  *
- * Первая версия работает с внешней папкой zapret (Flowseal/zapret-discord-youtube):
- * берём winws.exe, WinDivert и два TLS/QUIC-паттерна, но запускаем только
- * правила для YouTube/Google. Позже эти файлы можно положить в resources.
+ * В установщик входит минимальный zapret (winws + WinDivert) и служба
+ * UndertowDpi. Служба работает от SYSTEM, поэтому включение и выключение
+ * обхода не требуют UAC. Она держит winws, следит за процессом Undertow и
+ * гасит обход, когда приложение закрывается.
  *
- * winws требует администратора. Поэтому запускается не сама игра, а скрытый
- * elevated-супервизор: он держит winws, следит за процессом Undertow и гасит
- * обход, когда приложение закрывается. Выключение — через файл-флаг, без
- * повторного UAC.
+ * Если службы нет (например, запуск из исходников), используется старый
+ * elevated-супервизор через PowerShell: он требует UAC при каждом включении,
+ * но позволяет проверить обход без установки.
  */
 import { app, dialog } from 'electron'
 import { execFile } from 'node:child_process'
+import { connect } from 'node:net'
 import {
   existsSync,
   mkdirSync,
@@ -30,6 +31,7 @@ export interface DpiStatus {
   state: DpiState
   path: string | null
   bundled: boolean
+  mode: 'service' | 'uac'
   error: string | null
 }
 
@@ -202,6 +204,100 @@ async function waitForResult(timeoutMs: number): Promise<string | null> {
   return null
 }
 
+const BS = String.fromCharCode(92)
+const SERVICE_PIPE = `${BS}${BS}.${BS}pipe${BS}UndertowDpi`
+
+interface ServiceProbe {
+  installed: boolean
+  reachable: boolean
+  running: boolean
+  pid: number | null
+  appPid: number | null
+}
+
+function serviceCommand(line: string, timeoutMs = 5000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connect({ path: SERVICE_PIPE })
+    let data = ''
+    let done = false
+    const timer = setTimeout(() => finish('err', new Error('Служба обхода не отвечает.')), timeoutMs)
+
+    const finish = (kind: 'ok' | 'err', value: string | Error): void => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      socket.destroy()
+      if (kind === 'ok') resolve(String(value))
+      else reject(value as Error)
+    }
+
+    socket.setEncoding('utf8')
+    socket.on('connect', () => socket.write(`${line}\n`))
+    socket.on('data', (chunk: string) => {
+      data += chunk
+      const nl = data.indexOf('\n')
+      if (nl >= 0) finish('ok', data.slice(0, nl).trim())
+    })
+    socket.on('error', (error) => finish('err', new Error(`Служба обхода недоступна: ${error.message}`)))
+    socket.on('close', () => {
+      if (!done) finish('err', new Error('Служба обхода закрыла соединение.'))
+    })
+  })
+}
+
+function serviceInstalled(): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      'sc.exe',
+      ['query', 'UndertowDpi'],
+      { windowsHide: true, timeout: 3000 },
+      (error, stdout) => {
+        resolve(!error && /UndertowDpi/i.test(stdout))
+      }
+    )
+  })
+}
+
+async function serviceProbe(): Promise<ServiceProbe> {
+  try {
+    const reply = await serviceCommand('status', 1200)
+    const match = /^ok running=(\d) pid=(\d+) app=(\d+)$/.exec(reply)
+    if (match) {
+      return {
+        installed: true,
+        reachable: true,
+        running: match[1] === '1',
+        pid: Number(match[2]) || null,
+        appPid: Number(match[3]) || null
+      }
+    }
+  } catch {
+    // службы может не быть — тогда работаем через старый UAC-супервизор
+  }
+  return {
+    installed: await serviceInstalled(),
+    reachable: false,
+    running: false,
+    pid: null,
+    appPid: null
+  }
+}
+
+async function stopLegacySupervisor(): Promise<void> {
+  if (!(await runningPid())) {
+    rmSync(stopPath(), { force: true })
+    return
+  }
+  mkdirSync(runtimeDir(), { recursive: true })
+  writeFileSync(stopPath(), 'stop', 'utf8')
+  const deadline = Date.now() + 6000
+  while (Date.now() < deadline) {
+    if (!(await runningPid())) return
+    await sleep(200)
+  }
+  throw new Error('Старый winws не остановился. Перезапусти приложение.')
+}
+
 function friendlyError(text: string): string {
   if (/canceled|cancelled|отменен|отменён/i.test(text)) {
     return 'Запуск отменён: Windows запросил права администратора.'
@@ -312,32 +408,65 @@ export async function getStatus(): Promise<DpiStatus> {
       state: 'unavailable',
       path: null,
       bundled: false,
+      mode: 'uac',
       error: 'Обход DPI сейчас реализован только для Windows.'
     }
   }
 
   const found = install()
-  const pid = await runningPid()
+  const service = await serviceProbe()
+  const mode: 'service' | 'uac' = service.installed ? 'service' : 'uac'
+  const path = found?.root ?? readConfig().zapretPath ?? null
+
   if (found && found.missing.length > 0) {
     return {
       supported,
       available: false,
-      running: Boolean(pid),
+      running: service.reachable ? service.running : Boolean(await runningPid()),
       state: 'error',
       path: found.root,
       bundled: found.bundled,
+      mode,
       error: `В папке zapret не хватает: ${found.missing.join(', ')}`
     }
   }
 
+  if (service.installed && !service.reachable) {
+    return {
+      supported,
+      available: Boolean(found),
+      running: false,
+      state: 'error',
+      path,
+      bundled: Boolean(found?.bundled),
+      mode: 'service',
+      error: 'Служба UndertowDpi не отвечает. Переустанови Undertow или перезапусти службу.'
+    }
+  }
+
+  if (service.reachable) {
+    return {
+      supported,
+      available: Boolean(found),
+      running: service.running,
+      state: busy ?? (service.running ? 'on' : lastError ? 'error' : 'off'),
+      path,
+      bundled: Boolean(found?.bundled),
+      mode: 'service',
+      error: service.running ? null : lastError
+    }
+  }
+
+  const pid = await runningPid()
   if (busy) {
     return {
       supported,
       available: Boolean(found),
       running: Boolean(pid),
       state: busy,
-      path: found?.root ?? null,
+      path,
       bundled: Boolean(found?.bundled),
+      mode: 'uac',
       error: null
     }
   }
@@ -347,8 +476,9 @@ export async function getStatus(): Promise<DpiStatus> {
     available: Boolean(found),
     running: Boolean(pid),
     state: pid ? 'on' : lastError ? 'error' : 'off',
-    path: found?.root ?? readConfig().zapretPath ?? null,
+    path,
     bundled: Boolean(found?.bundled),
+    mode: 'uac',
     error: pid ? null : lastError
   }
 }
@@ -358,11 +488,41 @@ export async function setEnabled(on: boolean): Promise<DpiStatus> {
   if (busy) throw new Error('Обход уже переключается.')
 
   const found = install()
-  if (on) {
-    if (!found) throw new Error('Не найдены файлы zapret. Укажи папку в настройках.')
-    if (found.missing.length > 0) {
-      throw new Error(`В папке zapret не хватает: ${found.missing.join(', ')}`)
+  if (!found) throw new Error('Не найдены файлы zapret. Укажи папку в настройках.')
+  if (found.missing.length > 0) {
+    throw new Error(`В папке zapret не хватает: ${found.missing.join(', ')}`)
+  }
+
+  const service = await serviceProbe()
+  if (service.installed) {
+    if (!service.reachable) {
+      throw new Error('Служба UndertowDpi не отвечает. Переустанови Undertow или перезапусти службу.')
     }
+    if (on && service.running) return getStatus()
+
+    busy = on ? 'starting' : 'stopping'
+    lastError = null
+    try {
+      if (on) {
+        // если до установки службы остался старый elevated-супервизор — гасим его
+        await stopLegacySupervisor()
+        const reply = await serviceCommand(`start ${process.pid}`, 15000)
+        if (!reply.startsWith('ok')) throw new Error(friendlyError(reply.slice(3)))
+      } else {
+        await stopLegacySupervisor()
+        const reply = await serviceCommand('stop', 10000)
+        if (!reply.startsWith('ok')) throw new Error(friendlyError(reply.slice(3)))
+      }
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e)
+      throw e
+    } finally {
+      busy = null
+    }
+    return getStatus()
+  }
+
+  if (on) {
     if (await runningPid()) return getStatus()
 
     busy = 'starting'

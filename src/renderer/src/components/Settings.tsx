@@ -256,7 +256,7 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
             <p>
               YouTube в России часто открывается в разы медленнее из-за DPI. Здесь можно поднять локальный winws,
               который меняет только TLS/QUIC-пакеты к доменам YouTube и Google. Остальной трафик не трогается.
-              Встроенный набор уже в установщике; внешняя папка нужна только если хочется свою версию.
+              Встроенный набор уже в установщике. В обычной установке переключение идёт через службу, без UAC.
             </p>
           </div>
           <span className={`pill ${dpi?.state === 'on' ? 'ok' : 'off'}`}>{dpiLabel}</span>
@@ -272,8 +272,9 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
           <span>
             <b>Обход DPI для YouTube</b>
             <em>
-              При включении Windows запросит права администратора — один раз на сессию обхода. Дальше winws
-              живёт в фоне, а при закрытии Undertow или выключении тумблера останавливается сам.
+              {dpi?.mode === 'service'
+                ? 'Служба UndertowDpi установлена вместе с приложением. Включение и выключение идут без UAC, а при закрытии Undertow служба сама гасит winws.'
+                : 'Служба ещё не установлена. Windows запросит права администратора; для обычной работы обнови установщик.'}
             </em>
           </span>
         </label>
@@ -294,17 +295,23 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
             <b>только YouTube и Google · порт 443</b>
           </div>
           <div>
+            <span>Режим</span>
+            <b>{dpi?.mode === 'service' ? 'служба, без UAC' : 'разовый UAC'}</b>
+          </div>
+          <div>
             <span>Права</span>
-            <b>{dpi?.running ? 'запущено с правами администратора' : 'UAC при включении'}</b>
+            <b>{dpi?.mode === 'service' ? 'служба работает от SYSTEM' : 'UAC при включении'}</b>
           </div>
         </div>
 
         {dpi?.error && <div className="notice">{dpi.error}</div>}
 
         <div className="panel-foot">
-          <button className="link-btn" onClick={() => void chooseDpi()} disabled={!dpi?.supported || dpiBusy}>
-            Выбрать папку zapret
-          </button>
+          {dpi?.mode !== 'service' && (
+            <button className="link-btn" onClick={() => void chooseDpi()} disabled={!dpi?.supported || dpiBusy}>
+              Выбрать папку zapret
+            </button>
+          )}
           <button className="link-btn" onClick={() => void refreshDpi()} disabled={dpiBusy}>
             Проверить
           </button>

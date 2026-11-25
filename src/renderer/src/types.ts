@@ -93,6 +93,7 @@ export interface DpiStatus {
   state: 'off' | 'on' | 'starting' | 'stopping' | 'error' | 'unavailable'
   path: string | null
   bundled: boolean
+  mode: 'service' | 'uac'
   error: string | null
 }
 
