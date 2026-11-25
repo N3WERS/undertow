@@ -258,6 +258,120 @@ export function dropStreamCache(trackId?: string): void {
   else streamCache.clear()
 }
 
+/* ------------------------------- чарт ------------------------------------ */
+
+/** Официальные чарты YouTube Music. */
+export type ChartScope = 'ru' | 'us' | 'world'
+const CHARTS: Record<ChartScope, { playlist: string; subtitle: string }> = {
+  ru: {
+    playlist: 'PL4fGSI1pDJn5C8dBiYt0BTREyCHbZ47qc',
+    subtitle: 'Россия · YouTube Music'
+  },
+  us: {
+    playlist: 'PL4fGSI1pDJn69On1f-8NAvX_CYlx7QyZc',
+    subtitle: 'США · YouTube Music'
+  },
+  world: {
+    playlist: 'PL4fGSI1pDJn6puJdseH2Rt9sMvt9E2M4i',
+    subtitle: 'Мир · YouTube Music'
+  }
+}
+const CHART_TTL = 6 * 60 * 60_000
+const chartCache = new Map<ChartScope, { at: number; value: TopChart }>()
+
+export interface TopChart {
+  title: string
+  subtitle: string
+  scope: ChartScope
+  updatedAt: number
+  items: Track[]
+}
+
+/**
+ * Чарт берём из официального плейлиста YouTube Music. Он обновляется сам,
+ * поэтому кэш короткий: раз в шесть часов достаточно, чтобы не дёргать сеть
+ * на каждый заход на главную.
+ *
+ * Подписи плейлиста часто содержат «Artist - Song (Official Video)», поэтому
+ * перед показом приводим их к виду «исполнитель / название».
+ */
+const CHART_LABEL = /records|recordings|music|sound|media|studio|production|entertainment|tv|müzik|label/i
+
+function tidyChartTrack(track: Track, item: ParserItem): Track {
+  let title = track.title.trim()
+  let artist = track.artist.trim()
+  const cols = Array.isArray(item.flex_columns) ? item.flex_columns : []
+  const flexArtist = text((cols[1] as { title?: unknown } | undefined)?.title)
+  if ((!artist || artist === 'YouTube') && flexArtist) artist = flexArtist
+
+  const prefix = title.split(/\s+[-—]\s+/)[0]?.trim() ?? ''
+  const looksLikeLabel = CHART_LABEL.test(artist)
+  if ((looksLikeLabel || !artist || artist === 'YouTube') && prefix && prefix.length <= 60 && !prefix.includes('(')) {
+    artist = prefix
+    title = title.slice(prefix.length).replace(/^\s*[-—]\s*/, '')
+  }
+
+  // «Toxi$, Дора – ЗНАК»: слева перечислены исполнители, справа название
+  const dash = title.match(/^(.{1,80}?)\s+[–—]\s+(.+)$/)
+  if (dash && artist && dash[1].toLowerCase().includes(artist.toLowerCase())) {
+    artist = dash[1]
+    title = dash[2]
+  }
+
+  // «Artist - Song» в заголовке: артиста уже знаем, оставляем только песню
+  if (artist && title.toLowerCase().startsWith(`${artist.toLowerCase()} - `)) {
+    title = title.slice(artist.length + 3)
+  }
+  if (title.includes(' / ')) title = title.split(' / ')[0]
+
+  title = title
+    .replace(/\s*\((?:official|премьера|premiere|music video|video klip|mood video|official music video|official audio|lyric video|visualizer)[^)]*\)\s*$/gi, '')
+    .replace(/\s*\[[^\]]*(?:official|video|anniversary)[^\]]*\]\s*$/gi, '')
+    .replace(/\s*\/\s*video klip\s*$/gi, '')
+    .trim()
+  title = title
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part && !/^(official|audio|video|премьера|premiere|lyrics?|20\d\d)(?:\s|$)/i.test(part))
+    .join(' | ')
+
+  const names = artist ? artist.split(/\s*,\s*/).filter(Boolean) : []
+  return {
+    ...track,
+    title: title || track.title,
+    artist: artist || track.artist,
+    artistId: undefined,
+    artists: names.length ? names.map((name) => ({ name })) : undefined
+  }
+}
+
+export async function topChart(scope: ChartScope = 'ru', force = false): Promise<TopChart> {
+  const chart = CHARTS[scope] ?? CHARTS.ru
+  const cached = chartCache.get(scope)
+  if (!force && cached && Date.now() - cached.at < CHART_TTL) return cached.value
+  const yt = await client()
+  const playlist = await yt.music.getPlaylist(chart.playlist)
+  const rows = (playlist.items ?? []) as unknown as ParserItem[]
+  const items = dedupe(
+    rows
+      .map((row) => {
+        const track = musicTrack(row)
+        return track ? tidyChartTrack(track, row) : null
+      })
+      .filter((track): track is Track => track !== null && track.playable)
+  ).slice(0, 100)
+  if (!items.length) throw new Error('Чарт YouTube Music пуст')
+  const value: TopChart = {
+    title: 'Топ 100',
+    subtitle: chart.subtitle,
+    scope,
+    updatedAt: Date.now(),
+    items
+  }
+  chartCache.set(scope, { at: Date.now(), value })
+  return value
+}
+
 /* ------------------ YouTube Music: артисты, альбомы, соседи --------------- */
 
 const MUSIC_TTL = 30 * 60_000
@@ -366,6 +480,7 @@ function rowAlbumName(item: ParserItem): string | undefined {
   for (let i = texts.length - 1; i >= 1; i--) {
     const t = texts[i]
     if (/plays|views|подписчик|слушател/i.test(t)) continue
+    if (/^n\/a$/i.test(t)) continue
     if (/^[0-9]+:[0-9]{2}$/.test(t) || /^[0-9]{4}$/.test(t)) continue
     return t
   }
@@ -376,12 +491,23 @@ export function musicTrack(item: ParserItem, album?: YmAlbumRef, fallback?: Trac
   const id = typeof item.id === 'string' ? item.id : ''
   const title = text(item.title) || text(item.name)
   if (!id || !title || id.length !== 11) return null
-  const raw = Array.isArray(item.artists) ? (item.artists as { name?: string; channel_id?: string }[]) : []
+  const raw = [
+    ...(Array.isArray(item.artists) ? item.artists : []),
+    ...(Array.isArray(item.authors) ? item.authors : [])
+  ] as { name?: string; channel_id?: string }[]
+  const seenArtists = new Set<string>()
   const artists = raw
-    .map((a) => ({ id: typeof a.channel_id === 'string' ? a.channel_id : undefined, name: String(a.name ?? '') }))
-    .filter((a) => a.name)
+    .map((a) => ({ id: typeof a.channel_id === 'string' ? a.channel_id : undefined, name: String(a.name ?? '').trim() }))
+    .filter((a) => {
+      if (!a.name) return false
+      const key = a.name.toLowerCase()
+      if (seenArtists.has(key)) return false
+      seenArtists.add(key)
+      return true
+    })
   const artistName = artists.map((a) => a.name).join(', ')
-  const albumTitle = album?.title ?? rowAlbumName(item)
+  const rawAlbum = album?.title ?? rowAlbumName(item)
+  const albumTitle = rawAlbum && !/^n\/a$/i.test(rawAlbum) ? rawAlbum : undefined
   const year =
     text(item.year) ||
     text((item as { album?: { year?: unknown } }).album?.year) ||

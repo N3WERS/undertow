@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   home: () => ipcRenderer.invoke('home'),
+  topChart: (scope: 'ru' | 'us' | 'world' = 'ru', force = false) =>
+    ipcRenderer.invoke('chart:top', scope, force),
   albumsList: () => ipcRenderer.invoke('albums:list'),
   albumsSave: (page: unknown) => ipcRenderer.invoke('albums:save', page),
   albumsRemove: (id: string) => ipcRenderer.invoke('albums:remove', id),

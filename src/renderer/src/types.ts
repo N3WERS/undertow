@@ -31,6 +31,16 @@ export interface BrowsePage {
   related?: { id: string; name: string; coverUrl?: string }[]
 }
 
+export type ChartScope = 'ru' | 'us' | 'world'
+
+export interface TopChart {
+  title: string
+  subtitle: string
+  scope: ChartScope
+  updatedAt: number
+  items: Track[]
+}
+
 export interface Section {
   id: string
   title: string
@@ -216,6 +226,7 @@ export interface ImportResult {
 
 export interface UndertowApi {
   home(): Promise<Section[]>
+  topChart(scope?: ChartScope, force?: boolean): Promise<TopChart>
   refreshHome(): Promise<Section[]>
   enrichLibrary(): Promise<LibrarySnapshot>
   hideSection(id: string): Promise<string[]>

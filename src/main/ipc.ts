@@ -13,6 +13,12 @@ import * as genres from './genres'
 
 export function registerIpc(): void {
   ipcMain.handle('home', async () => providers.home())
+  ipcMain.handle('chart:top', async (_e, scope?: string, force?: boolean) =>
+    providers.topChart(
+      scope === 'world' || scope === 'us' ? scope : 'ru',
+      Boolean(force)
+    )
+  )
   // пересобрать личные подборки, минуя кэш
   ipcMain.handle('home:refresh', async () => providers.home(true))
   ipcMain.handle('search', async (_e, query: string) => providers.search(String(query ?? '')))

@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Section, Track } from '../types'
+import type { ChartScope, Section, TopChart, Track } from '../types'
 import TrackList, { fmtTime } from './TrackList'
 import { IconClose, IconPlay, IconSpark } from './Icons'
 
 interface Props {
   sections: Section[]
+  chart?: TopChart | null
+  chartScope: ChartScope
+  chartLoading?: boolean
+  onChartScope?: (scope: ChartScope) => void
   loading: boolean
   error: string | null
   currentId: string | null
@@ -175,8 +179,136 @@ function Hero({
   )
 }
 
+/** Большой блок чарта: крупный заголовок и три первых трека. */
+function ChartHero({
+  chart,
+  scope,
+  loading,
+  open,
+  onPlay,
+  onToggle,
+  onScope,
+  onHover
+}: {
+  chart: TopChart
+  scope: ChartScope
+  loading: boolean
+  open: boolean
+  onPlay: (track: Track, list: Track[]) => void
+  onToggle: () => void
+  onScope: (scope: ChartScope) => void
+  onHover?: (track: Track) => void
+}) {
+  const top = chart.items.slice(0, 3)
+  const date = new Date(chart.updatedAt).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long'
+  })
+  return (
+    <section
+      id="home-chart"
+      className={`chart-hero surface-hero surface-deep fade-up${loading ? ' loading' : ''}`}
+      aria-busy={loading}
+    >
+      <div className="chart-copy">
+        <div className="chart-topline">
+          <span className="chart-kicker">Чарт недели</span>
+          <div className="chart-scope" role="group" aria-label="Регион чарта">
+            <button
+              className={scope === 'ru' ? 'on' : ''}
+              onClick={() => onScope('ru')}
+              aria-pressed={scope === 'ru'}
+              disabled={loading}
+            >
+              Россия
+            </button>
+            <button
+              className={scope === 'us' ? 'on' : ''}
+              onClick={() => onScope('us')}
+              aria-pressed={scope === 'us'}
+              disabled={loading}
+            >
+              США
+            </button>
+            <button
+              className={scope === 'world' ? 'on' : ''}
+              onClick={() => onScope('world')}
+              aria-pressed={scope === 'world'}
+              disabled={loading}
+            >
+              Мир
+            </button>
+          </div>
+        </div>
+        <div className="chart-heading">
+          <h2 className="chart-title">
+            Топ <span>100</span>
+          </h2>
+          <span className="chart-source">YouTube Music</span>
+        </div>
+        <p className="chart-sub">Самые популярные композиции недели. Обновляется автоматически.</p>
+        <div className="chart-meta">
+          <span>{tracksWord(chart.items.length)}</span>
+          <i />
+          <span>обновлено {date}</span>
+          {loading ? (
+            <>
+              <i />
+              <span className="chart-loading">обновляю…</span>
+            </>
+          ) : null}
+        </div>
+        <div className="chart-actions">
+          <button
+            className="play-btn"
+            onClick={() => onPlay(chart.items[0], chart.items)}
+            disabled={loading}
+          >
+            <IconPlay width={15} height={15} />
+            Слушать чарт
+          </button>
+          <button
+            className={`chart-toggle${open ? ' open' : ''}`}
+            onClick={onToggle}
+            disabled={loading}
+          >
+            {open ? 'Свернуть список' : 'Весь список'}
+          </button>
+        </div>
+      </div>
+
+      <div className="chart-podium" aria-label="Первые три места">
+        {top.map((t, i) => (
+          <button
+            key={t.id}
+            className={`chart-card place-${i + 1}`}
+            title={`Слушать: ${t.title}`}
+            onClick={() => onPlay(t, chart.items)}
+            onMouseEnter={() => onHover?.(t)}
+            disabled={loading}
+          >
+            <span className="chart-card-art">
+              {t.coverUrl ? <img src={t.coverUrl} alt="" /> : <span className="chart-card-empty" />}
+              <span className="chart-card-rank">{String(i + 1).padStart(2, '0')}</span>
+              <span className="chart-card-play">
+                <IconPlay width={15} height={15} />
+              </span>
+            </span>
+            <span className="chart-card-title">{t.title}</span>
+            <span className="chart-card-artist">{t.artist}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function Home({
   sections,
+  chart,
+  chartScope,
+  chartLoading,
+  onChartScope,
   loading,
   error,
   currentId,
@@ -202,6 +334,7 @@ export default function Home({
   // раскрытые секции: по умолчанию видно 8 строк, кнопка показывает все
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const toggleSection = (id: string) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
+  const [chartOpen, setChartOpen] = useState(false)
 
   const personal = sections.some((s) => s.id.startsWith('rec-'))
   const trending = sections.find((s) => s.layout === 'list' && s.items.some((i) => i.playable))
@@ -212,7 +345,7 @@ export default function Home({
   const chipsRef = useRef<HTMLDivElement | null>(null)
   const chipsNavRef = useRef<HTMLElement | null>(null)
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
-  const [active, setActive] = useState<string | null>(null)
+  const [active, setActive] = useState<string | null>('home-chart')
   const [stuck, setStuck] = useState(false)
   const [edges, setEdges] = useState({ left: false, right: false })
 
@@ -248,6 +381,15 @@ export default function Home({
     sc.scrollTo({ top: sc.scrollTop + delta, behavior: 'smooth' })
   }
 
+  const jumpToChart = (): void => {
+    const sc = scrollRef.current
+    const el = document.getElementById('home-chart')
+    if (!sc || !el) return
+    const barH = chipsRef.current?.getBoundingClientRect().height ?? 0
+    const target = sc.getBoundingClientRect().top + barH + 40
+    sc.scrollTo({ top: sc.scrollTop + el.getBoundingClientRect().top - target, behavior: 'smooth' })
+  }
+
   /** Держим нажатый чип по центру полосы, чтобы он не уезжал под край. */
   const centerChip = (el: HTMLElement): void => {
     const nav = chipsNavRef.current
@@ -268,7 +410,7 @@ export default function Home({
     const flush = Boolean(wrap) && wrap!.getBoundingClientRect().top <= sc.getBoundingClientRect().top + 1
     setStuck((prev) => (prev === flush ? prev : flush))
 
-    let current: string | null = null
+    let current: string | null = chart ? 'home-chart' : null
     for (const s of sections) {
       const el = sectionRefs.current[s.id]
       if (el && el.getBoundingClientRect().top <= line) current = s.id
@@ -289,7 +431,7 @@ export default function Home({
             <p>Подтягиваю новинки и тренды…</p>
           </div>
         </div>
-        <div className="skeleton" style={{ height: 220, marginBottom: 30 }} />
+        <div className="skeleton chart-skeleton" />
         {[0, 1].map((i) => (
           <div key={i} style={{ marginBottom: 30 }}>
             <div className="skeleton" style={{ height: 16, width: 180, marginBottom: 14 }} />
@@ -355,7 +497,7 @@ export default function Home({
         ) : null}
       </div>
 
-      {sections.length > 2 ? (
+      {chart || sections.length > 2 ? (
         <div
           className={`chips-wrap${stuck ? ' stuck' : ''}${edges.left ? ' has-left' : ''}${
             edges.right ? ' has-right' : ''
@@ -377,6 +519,18 @@ export default function Home({
             ref={chipsNavRef}
             onScroll={syncEdges}
           >
+            {chart ? (
+              <button
+                className={`section-chip${active === 'home-chart' ? ' active' : ''}`}
+                onClick={(e) => {
+                  jumpToChart()
+                  centerChip(e.currentTarget)
+                }}
+                title="Перейти к чарту"
+              >
+                Чарт
+              </button>
+            ) : null}
             {sections.map((s) => (
               <button
                 key={s.id}
@@ -403,7 +557,22 @@ export default function Home({
         </div>
       ) : null}
 
-      {heroTrack && (
+      {chart ? (
+        <ChartHero
+          chart={chart}
+          scope={chartScope}
+          loading={Boolean(chartLoading)}
+          open={chartOpen}
+          onPlay={onPlay}
+          onToggle={() => setChartOpen((v) => !v)}
+          onScope={(scope) => onChartScope?.(scope)}
+          onHover={onHover}
+        />
+      ) : chartLoading ? (
+        <div className="skeleton chart-skeleton" />
+      ) : null}
+
+      {!chart && heroTrack && (
         <Hero
           track={heroTrack}
           list={trending!.items}
@@ -413,6 +582,55 @@ export default function Home({
           onOpenAlbum={onOpenAlbum}
         />
       )}
+
+      {chart && chart.items.length ? (
+        <section className={`section chart-list-section fade-up${chartLoading ? ' loading' : ''}`}>
+          <div className="section-head">
+            <div className="section-title">
+              <div>
+                <h2>Чарт недели</h2>
+                <div className="section-sub">{chart.subtitle}</div>
+              </div>
+            </div>
+            <div className="section-tools">
+              <button className="section-play" onClick={() => onPlay(chart.items[0], chart.items)}>
+                <IconPlay width={11} height={11} />
+                слушать всё
+              </button>
+              <button className="section-more" onClick={() => setChartOpen((v) => !v)}>
+                {chartOpen ? 'свернуть' : `все ${chart.items.length}`} →
+              </button>
+            </div>
+          </div>
+          <TrackList
+            tracks={chart.items}
+            ranked
+            limit={chartOpen ? undefined : 10}
+            currentId={currentId}
+            playing={playing}
+            onPlay={onPlay}
+            onToggle={onToggle}
+            onLocked={onLocked}
+            likedIds={likedIds}
+            onLike={onLike}
+            onHover={onHover}
+            onAddToQueue={onAddToQueue}
+            onOpenArtist={onOpenArtist}
+            onOpenAlbum={onOpenAlbum}
+            onAddToPlaylist={onAddToPlaylist}
+            onSimilar={onSimilar}
+            playContext={chart.items}
+          />
+          {chart.items.length > 10 ? (
+            <button
+              className={`expand-btn${chartOpen ? ' open' : ''}`}
+              onClick={() => setChartOpen((v) => !v)}
+            >
+              {chartOpen ? 'свернуть' : `показать все ${chart.items.length}`}
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       {sections.map((s, idx) => {
         const isArtist = s.id.startsWith('rec-artist')

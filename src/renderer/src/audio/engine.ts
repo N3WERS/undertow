@@ -11,6 +11,9 @@
  */
 import type { ResolvedStream, Track } from '../types'
 
+/** off — не повторять; all — очередь по кругу; one — текущий трек */
+export type RepeatMode = 'off' | 'all' | 'one'
+
 export interface Snapshot {
   playing: boolean
   time: number
@@ -25,6 +28,7 @@ export interface EngineHandlers {
   onTrackChange(track: Track | null): void
   /** очередь изменилась: состав, порядок или текущая позиция */
   onQueue(queue: Track[], index: number, shuffled: boolean): void
+  onRepeat(mode: RepeatMode): void
   onError(message: string): void
   onQuality(label: string | null): void
   /** трек играет найденной копией с YouTube (Яндекс был недоступен) */
@@ -88,6 +92,7 @@ export class AudioEngine {
   private shuffleTail: Track[] | null = null
   /** позиция, с которой нужно начать после восстановления очереди */
   private shuffled = false
+  private repeat: RepeatMode = 'off'
 
   private opts: EngineOptions = { crossfadeSec: 0, normalization: true, volume: 0.85 }
   private normDb = 0
@@ -239,9 +244,11 @@ export class AudioEngine {
     this.shuffled = false
     this.shuffleTail = null
     this.playing = false
+    this.repeat = 'off'
     for (let i = 0; i < 2; i++) this.clearSlot(i)
     this.handlers.onTrackChange(null)
     this.emitQueue()
+    this.handlers.onRepeat('off')
   }
 
   async toggle(): Promise<void> {
@@ -281,6 +288,19 @@ export class AudioEngine {
 
   isShuffled(): boolean {
     return this.shuffled
+  }
+
+  getRepeat(): RepeatMode {
+    return this.repeat
+  }
+
+  /** off → all → one → off */
+  cycleRepeat(): RepeatMode {
+    const next: RepeatMode = this.repeat === 'off' ? 'all' : this.repeat === 'all' ? 'one' : 'off'
+    this.repeat = next
+    this.handlers.onRepeat(next)
+    void this.preloadNext()
+    return next
   }
 
   private emitQueue(): void {
@@ -405,8 +425,9 @@ export class AudioEngine {
   }
 
   async next(): Promise<void> {
-    if (this.index + 1 >= this.queue.length) return
-    await this.hardSwitch(this.index + 1)
+    const target = this.nextIndex()
+    if (target === null || target === this.index) return
+    await this.hardSwitch(target)
   }
 
   async prev(): Promise<void> {
@@ -552,8 +573,30 @@ export class AudioEngine {
     void this.preloadNext()
   }
 
+  private nextIndex(): number | null {
+    if (!this.queue.length) return null
+    if (this.index + 1 < this.queue.length) return this.index + 1
+    return this.repeat === 'all' ? 0 : null
+  }
+
+  /** Повтор одного трека: тот же слот, с начала, без пересоздания потока. */
+  private restartCurrent(): void {
+    const el = this.els[this.active]
+    if (!el.src) return
+    this.switchToken++
+    this.switching = false
+    this.playing = true
+    this.normDb = 0
+    el.currentTime = 0
+    void this.ctx?.resume()
+    void el.play().catch((e) => this.handlers.onError(`Не играет: ${(e as Error).message}`))
+    void this.preloadNext()
+  }
+
   private async preloadNext(): Promise<void> {
-    const next = this.queue[this.index + 1]
+    const target = this.nextIndex()
+    if (target === null || target === this.index) return
+    const next = this.queue[target]
     if (!next) return
     const token = ++this.preloadToken
     const slot = 1 - this.active
@@ -674,9 +717,14 @@ export class AudioEngine {
 
     // В соседнем слоте может лежать устаревший трек (или ничего): проверяем,
     // что это ровно следующий по очереди, иначе играл бы предыдущий.
-    if (!el.src || this.loadedId[other] !== this.queue[this.index + 1]?.id) {
+    const target = this.nextIndex()
+    if (target === null || target === this.index) {
       this.switching = false
-      await this.hardSwitch(this.index + 1)
+      return
+    }
+    if (!el.src || this.loadedId[other] !== this.queue[target]?.id) {
+      this.switching = false
+      await this.hardSwitch(target)
       return
     }
 
@@ -684,7 +732,7 @@ export class AudioEngine {
       await el.play()
     } catch {
       this.switching = false
-      await this.hardSwitch(this.index + 1)
+      await this.hardSwitch(target)
       return
     }
 
@@ -696,7 +744,7 @@ export class AudioEngine {
     this.gains[this.active].gain.setValueAtTime(this.gains[this.active].gain.value, now)
     this.gains[this.active].gain.linearRampToValueAtTime(0, now + 0.02)
 
-    this.commitSwitch(120, token)
+    this.commitSwitch(120, token, target)
   }
 
   /** Кроссфейд по равномощной кривой. */
@@ -708,16 +756,21 @@ export class AudioEngine {
     const other = 1 - this.active
     const el = this.els[other]
 
-    if (!el.src || this.loadedId[other] !== this.queue[this.index + 1]?.id) {
+    const target = this.nextIndex()
+    if (target === null || target === this.index) {
       this.switching = false
-      await this.hardSwitch(this.index + 1)
+      return
+    }
+    if (!el.src || this.loadedId[other] !== this.queue[target]?.id) {
+      this.switching = false
+      await this.hardSwitch(target)
       return
     }
     try {
       await el.play()
     } catch {
       this.switching = false
-      await this.hardSwitch(this.index + 1)
+      await this.hardSwitch(target)
       return
     }
 
@@ -740,19 +793,19 @@ export class AudioEngine {
     this.gains[other].gain.setValueAtTime(0, now)
     this.gains[other].gain.setValueCurveAtTime(curveIn, now, dur)
 
-    this.commitSwitch(dur * 1000 + 40, token)
+    this.commitSwitch(dur * 1000 + 40, token, target)
   }
 
-  private commitSwitch(delayMs: number, token: number): void {
-    const expected = this.queue[this.index + 1]?.id ?? null
+  private commitSwitch(delayMs: number, token: number, target: number): void {
+    const expected = this.queue[target]?.id ?? null
     setTimeout(() => {
       if (this.destroyed) return
       // пока шёл таймер, пользователь мог переключить трек вручную
       if (token !== this.switchToken) return
-      if ((this.queue[this.index + 1]?.id ?? null) !== expected) return
+      if ((this.queue[target]?.id ?? null) !== expected) return
       const old = this.active
       this.active = 1 - old
-      this.index += 1
+      this.index = target
       this.switching = false
       const ctx = this.ctx
       if (ctx) {
@@ -766,7 +819,7 @@ export class AudioEngine {
       if (shown) this.emitCopy(shown)
       this.emitQueue()
       void this.preloadNext()
-      if (!this.queue[this.index + 1]) {
+      if (this.nextIndex() === null) {
         // следующий слот больше не нужен — освобождаем
         this.loadedId[old] = null
         this.loadedInfo[old] = null
@@ -777,7 +830,11 @@ export class AudioEngine {
   private onElementEnded(i: number): void {
     if (i !== this.active) return
     if (this.switching) return
-    if (this.index + 1 < this.queue.length) {
+    if (this.repeat === 'one' || (this.repeat === 'all' && this.queue.length === 1)) {
+      this.restartCurrent()
+      return
+    }
+    if (this.nextIndex() !== null) {
       void this.gaplessSwitch()
     } else {
       this.playing = false
@@ -806,7 +863,15 @@ export class AudioEngine {
     const time = el.src ? el.currentTime || 0 : 0
     const remain = duration - el.currentTime
 
-    if (!this.switching && this.queue[this.index + 1] && el.src && this.playing) {
+    const upcoming = this.nextIndex()
+    if (
+      !this.switching &&
+      this.repeat !== 'one' &&
+      upcoming !== null &&
+      upcoming !== this.index &&
+      el.src &&
+      this.playing
+    ) {
       const xf = this.opts.crossfadeSec
       if (xf > 0) {
         if (remain > 0 && remain <= xf) void this.beginCrossfade(remain, xf)

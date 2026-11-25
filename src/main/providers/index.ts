@@ -316,6 +316,15 @@ export async function prewarm(track: Track): Promise<void> {
   }
 }
 
+/* --------------------------------- чарт ---------------------------------- */
+
+export function topChart(
+  scope: youtube.ChartScope = 'ru',
+  force = false
+): Promise<youtube.TopChart> {
+  return youtube.topChart(scope, force)
+}
+
 /* --------------------------------- лента --------------------------------- */
 
 export async function home(force = false): Promise<Section[]> {

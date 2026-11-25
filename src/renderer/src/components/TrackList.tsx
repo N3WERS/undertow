@@ -34,6 +34,8 @@ interface Props {
   onReorder?: (from: number, to: number) => void
   /** «похожее»: радио от этого трека */
   onSimilar?: (track: Track) => void
+  /** нумерованный список: номер всегда виден (чарт) */
+  ranked?: boolean
 }
 
 const SRC_LABEL: Record<string, string> = { yandex: 'Я', youtube: 'YT' }
@@ -65,13 +67,14 @@ export default function TrackList({
   onAddToPlaylist,
   onRemoveTrack,
   onReorder,
-  onSimilar
+  onSimilar,
+  ranked
 }: Props) {
   const list = limit ? tracks.slice(0, limit) : tracks
   const [dragging, setDragging] = useState<number | null>(null)
   const offline = useOffline()
   return (
-    <div className="tracks">
+    <div className={`tracks${ranked ? ' ranked' : ''}`}>
       {list.map((t, i) => {
         const isCurrent = t.id === currentId
         const liked = likedIds?.has(t.id) ?? false
@@ -86,9 +89,9 @@ export default function TrackList({
             key={`${t.id}-${i}`}
             role="button"
             tabIndex={0}
-            className={`track${isCurrent ? ' playing' : ''}${t.playable ? '' : ' locked'}${
-              dragging === i ? ' dragging' : ''
-            }`}
+            className={`track${ranked ? ' ranked' : ''}${isCurrent ? ' playing' : ''}${
+              t.playable ? '' : ' locked'
+            }${dragging === i ? ' dragging' : ''}`}
             onClick={activate}
             onMouseEnter={() => onHover?.(t)}
             draggable={Boolean(onReorder)}
@@ -124,6 +127,8 @@ export default function TrackList({
                   <i />
                   <i />
                 </span>
+              ) : ranked ? (
+                <span className="num rank-num">{String(i + 1).padStart(2, '0')}</span>
               ) : (
                 <>
                   <span className="num">{i + 1}</span>

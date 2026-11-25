@@ -1,19 +1,22 @@
 import { useRef, useState } from 'react'
 import type { Track } from '../types'
+import type { RepeatMode } from '../audio/engine'
 import { fmtTime } from './TrackList'
-import { IconClose, IconShuffle, IconTrash, IconWave } from './Icons'
+import { IconClose, IconRepeat, IconShuffle, IconTrash, IconWave } from './Icons'
 import { usePanelOrigin } from './usePanelOrigin'
 
 interface Props {
   queue: Track[]
   index: number
   shuffled: boolean
+  repeat: RepeatMode
   playing: boolean
   onClose: () => void
   onPlay: (at: number) => void
   onMove: (from: number, to: number) => void
   onRemove: (at: number) => void
   onShuffle: (on: boolean) => void
+  onCycleRepeat: () => void
   onClear: () => void
 }
 
@@ -26,12 +29,14 @@ export default function QueuePanel({
   queue,
   index,
   shuffled,
+  repeat,
   playing,
   onClose,
   onPlay,
   onMove,
   onRemove,
   onShuffle,
+  onCycleRepeat,
   onClear
 }: Props) {
   const [dragFrom, setDragFrom] = useState<number | null>(null)
@@ -67,6 +72,22 @@ export default function QueuePanel({
           </span>
         </div>
         <div className="queue-actions">
+          <button
+            className={`queue-repeat${repeat !== 'off' ? ' on' : ''}`}
+            onClick={onCycleRepeat}
+            title={
+              repeat === 'all'
+                ? 'Повтор всей очереди — включить повтор текущего трека'
+                : repeat === 'one'
+                  ? 'Повтор текущего трека — выключить'
+                  : 'Повтор выключен — включить повтор всей очереди'
+            }
+            aria-label="Повтор"
+            aria-pressed={repeat !== 'off'}
+          >
+            <IconRepeat width={14} height={14} />
+            {repeat === 'one' ? <span className="repeat-one">1</span> : null}
+          </button>
           <button
             className={`queue-shuffle${shuffled ? ' on' : ''}`}
             onClick={() => onShuffle(!shuffled)}

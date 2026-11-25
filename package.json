@@ -1,6 +1,6 @@
 {
   "name": "undertow",
-  "version": "0.3.8",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "description": "Undertow — personal music streaming client",

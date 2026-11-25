@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Track, TrackVersion } from '../types'
+import type { RepeatMode } from '../audio/engine'
 import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
 import ArtistLine from './ArtistLine'
@@ -20,6 +21,8 @@ import {
   IconPrev,
   IconQueue,
   IconRadio,
+  IconRepeat,
+  IconShuffle,
   IconText,
   IconVolume,
   IconWave,
@@ -47,6 +50,10 @@ interface Props {
   queueCount: number
   queueOpen: boolean
   onToggleQueue: () => void
+  shuffled: boolean
+  onShuffle: (on: boolean) => void
+  repeat: RepeatMode
+  onCycleRepeat: () => void
   lyricsOpen: boolean
   onToggleLyrics: () => void
   /** слова реально нашлись — иначе кнопку не показываем */
@@ -70,9 +77,10 @@ interface Props {
 }
 
 export default function PlayerBar(p: Props) {
-  const barRef = useRef<HTMLDivElement>(null)
+  const progressRef = useRef<HTMLDivElement>(null)
   const versionsRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState<string | null>(null)
+  const [hover, setHover] = useState<{ x: number; sec: number } | null>(null)
   const offline = useOffline()
   const saveProgress = p.track ? offline.progress[p.track.id] : undefined
   const savedLocal = p.track ? offline.ids.has(p.track.id) : false
@@ -92,11 +100,20 @@ export default function PlayerBar(p: Props) {
   const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0
 
   const seekAt = (clientX: number) => {
-    const el = barRef.current
+    const el = progressRef.current
     if (!el || duration <= 0) return
     const r = el.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
     p.onSeek(ratio * duration)
+  }
+
+  const hoverAt = (clientX: number) => {
+    const el = progressRef.current
+    if (!el || duration <= 0) return
+    const r = el.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
+    // подсказку не даём уезжать за края панели
+    setHover({ x: Math.min(Math.max(ratio * r.width, 38), r.width - 38), sec: ratio * duration })
   }
 
   return (
@@ -108,10 +125,54 @@ export default function PlayerBar(p: Props) {
       onClick={(e) => {
         if (!p.track) return
         const el = e.target as HTMLElement
-        if (el.closest('button, a, input, .bar, .vol-bar, .player-tools, .alt-menu')) return
+        if (el.closest('button, a, input, .bar, .player-progress, .vol-bar, .player-tools, .alt-menu')) return
         p.onExpand()
       }}
     >
+      <div
+        className={`player-progress${!p.track ? ' idle' : ''}${p.resolving ? ' loading' : ''}`}
+        ref={progressRef}
+        role="slider"
+        aria-label="Прогресс трека"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(progress)}
+        tabIndex={p.track ? 0 : -1}
+        onKeyDown={(e) => {
+          if (!p.track || duration <= 0) return
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault()
+            const delta = e.key === 'ArrowLeft' ? -5 : 5
+            p.onSeek(Math.min(duration, Math.max(0, progress + delta)))
+          }
+        }}
+        onMouseMove={(e) => hoverAt(e.clientX)}
+        onMouseLeave={() => setHover(null)}
+        onMouseDown={(e) => {
+          if (!p.track || duration <= 0) return
+          seekAt(e.clientX)
+          const move = (ev: MouseEvent) => {
+            seekAt(ev.clientX)
+            hoverAt(ev.clientX)
+          }
+          const up = () => {
+            window.removeEventListener('mousemove', move)
+            window.removeEventListener('mouseup', up)
+          }
+          window.addEventListener('mousemove', move)
+          window.addEventListener('mouseup', up)
+        }}
+      >
+        <div className="player-progress-track">
+          <div className="player-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+        {hover && p.track ? (
+          <span className="player-progress-tip" style={{ left: `${hover.x}px` }}>
+            {fmtTime(hover.sec)} <i>/</i> {fmtTime(duration)}
+          </span>
+        ) : null}
+      </div>
+
       <div className={`now${p.track ? '' : ' now-empty'}`}>
         <button
           className="now-media"
@@ -205,6 +266,7 @@ export default function PlayerBar(p: Props) {
             </div>
           ) : null}
         </div>
+        <span className="player-divider now-divider" aria-hidden="true" />
         <div className="now-actions">
           <button
             className={`tbtn like-tbtn${p.liked ? ' on' : ''}`}
@@ -244,6 +306,15 @@ export default function PlayerBar(p: Props) {
 
       <div className="transport">
         <div className="transport-row">
+          <button
+            className={`tbtn edge${p.shuffled ? ' on' : ''}`}
+            onClick={() => p.onShuffle(!p.shuffled)}
+            disabled={p.queueCount < 2}
+            title={p.shuffled ? 'Перемешивание включено' : 'Перемешать очередь'}
+            aria-pressed={p.shuffled}
+          >
+            <IconShuffle width={15} height={15} />
+          </button>
           <button className="tbtn" onClick={p.onPrev} disabled={!p.track} title="Предыдущий">
             <IconPrev />
           </button>
@@ -257,6 +328,23 @@ export default function PlayerBar(p: Props) {
           </button>
           <button className="tbtn" onClick={p.onNext} disabled={!p.track} title="Следующий">
             <IconNext />
+          </button>
+          <button
+            className={`tbtn edge repeat-btn${p.repeat !== 'off' ? ' on' : ''}`}
+            onClick={p.onCycleRepeat}
+            disabled={!p.track}
+            title={
+              p.repeat === 'all'
+                ? 'Повтор всей очереди — включить повтор текущего трека'
+                : p.repeat === 'one'
+                  ? 'Повтор текущего трека — выключить'
+                  : 'Повтор выключен — включить повтор всей очереди'
+            }
+            aria-label="Повтор"
+            aria-pressed={p.repeat !== 'off'}
+          >
+            <IconRepeat width={17} height={17} />
+            {p.repeat === 'one' ? <span className="repeat-one">1</span> : null}
           </button>
         </div>
 
@@ -273,30 +361,7 @@ export default function PlayerBar(p: Props) {
             </span>
             <span>выбери трек — и волна подхватит</span>
           </div>
-        ) : (
-        <div className="scrub">
-          <span>{fmtTime(progress)}</span>
-          <div
-            className={`bar${p.resolving ? ' loading' : ''}`}
-            ref={barRef}
-            onMouseDown={(e) => {
-              seekAt(e.clientX)
-              const move = (ev: MouseEvent) => seekAt(ev.clientX)
-              const up = () => {
-                window.removeEventListener('mousemove', move)
-                window.removeEventListener('mouseup', up)
-              }
-              window.addEventListener('mousemove', move)
-              window.addEventListener('mouseup', up)
-            }}
-          >
-            <div className="bar-track">
-              <div className="bar-fill" style={{ width: `${pct}%` }} />
-            </div>
-          </div>
-          <span>{fmtTime(duration)}</span>
-        </div>
-        )}
+        ) : null}
       </div>
       <div className="player-right">
         {p.track ? (
@@ -438,6 +503,7 @@ export default function PlayerBar(p: Props) {
           >
             <IconListPlus width={14} height={14} />
           </button>
+          <span className="tool-sep" aria-hidden="true" />
           <button
             className={`tool-btn norm-btn${p.normalize ? ' on' : ''}`}
             onClick={() => p.onNormalize(!p.normalize)}

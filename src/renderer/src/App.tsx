@@ -14,7 +14,7 @@ import PlaylistPicker from './components/PlaylistPicker'
 import LyricsPanel from './components/LyricsPanel'
 import PlayerBar from './components/PlayerBar'
 import NowPlaying from './components/NowPlaying'
-import { AudioEngine, type Snapshot } from './audio/engine'
+import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
 import type {
@@ -23,7 +23,9 @@ import type {
   ProviderState,
   ReleaseItem,
   SavedAlbum,
+  ChartScope,
   Section,
+  TopChart,
   Track,
   TrackVersion
 } from './types'
@@ -56,6 +58,12 @@ export default function App() {
   const [lyricsOpen, setLyricsOpen] = useState(false)
   const [hasLyrics, setHasLyrics] = useState(false)
   const [sections, setSections] = useState<Section[]>([])
+  const [chart, setChart] = useState<TopChart | null>(null)
+  const [chartScope, setChartScope] = useState<ChartScope>(() => {
+    const saved = localStorage.getItem('undertow.chartScope')
+    return saved === 'world' || saved === 'us' ? saved : 'ru'
+  })
+  const [chartLoading, setChartLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [homeError, setHomeError] = useState<string | null>(null)
   const [state, setState] = useState<ProviderState | null>(null)
@@ -78,6 +86,7 @@ export default function App() {
     shuffled: false
   })
   const [queueOpen, setQueueOpen] = useState(false)
+  const [repeat, setRepeat] = useState<RepeatMode>('off')
   const [theaterOpen, setTheaterOpen] = useState(false)
   const [resolving, setResolving] = useState(false)
   useEffect(() => {
@@ -137,6 +146,32 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  // чарт грузим отдельно: если YouTube его не отдал, главная всё равно работает
+  useEffect(() => {
+    let alive = true
+    setChartLoading(true)
+    window.undertow
+      .topChart(chartScope)
+      .then((value) => {
+        if (alive) setChart(value)
+      })
+      .catch(() => {
+        // при смене региона не показываем чарт другой страны под новым заголовком
+        if (alive) setChart((prev) => (prev?.scope === chartScope ? prev : null))
+      })
+      .finally(() => {
+        if (alive) setChartLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [chartScope])
+
+  const changeChartScope = useCallback((scope: ChartScope) => {
+    localStorage.setItem('undertow.chartScope', scope)
+    setChartScope(scope)
   }, [])
 
   /** Куда ведёт переход: id (Яндекс) или имя (YouTube-страница без id). */
@@ -250,15 +285,20 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false)
   const refreshHome = useCallback(async () => {
     setRefreshing(true)
+    const chartRefresh = window.undertow
+      .topChart(chartScope, true)
+      .then(setChart)
+      .catch(() => undefined)
     try {
       setSections(await window.undertow.refreshHome())
       toast('Подборка пересобрана')
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
+      await chartRefresh
       setRefreshing(false)
     }
-  }, [toast])
+  }, [toast, chartScope])
 
   const reloadLibrary = useCallback(async () => {
     try {
@@ -433,6 +473,7 @@ export default function App() {
         refillRadio(queue.length, index)
         refillFlow(queue.length, index)
       },
+      onRepeat: setRepeat,
       onError: (m) => toastRef.current(m, 'error'),
       onQuality: setQuality,
       onCopy: (sub, kind, approximate, main) => {
@@ -908,6 +949,10 @@ export default function App() {
           {!browse && view === 'home' && (
             <Home
               sections={sections}
+              chart={chart}
+              chartScope={chartScope}
+              chartLoading={chartLoading}
+              onChartScope={changeChartScope}
               loading={loading}
               error={homeError}
               currentId={currentId}
@@ -1099,6 +1144,10 @@ export default function App() {
         onOpenAlbum={openAlbum}
         queueCount={queueState.queue.length}
         queueOpen={queueOpen}
+        shuffled={queueState.shuffled}
+        onShuffle={(on) => engineRef.current?.setShuffle(on)}
+        repeat={repeat}
+        onCycleRepeat={() => engineRef.current?.cycleRepeat()}
         onToggleQueue={() => {
           if (!queueOpen) {
             setVersions(null)
@@ -1230,12 +1279,14 @@ export default function App() {
           queue={queueState.queue}
           index={queueState.index}
           shuffled={queueState.shuffled}
+          repeat={repeat}
           playing={snap.playing}
           onClose={() => setQueueOpen(false)}
           onPlay={(i) => void engineRef.current?.playAt(i)}
           onMove={(from, to) => engineRef.current?.moveInQueue(from, to)}
           onRemove={(i) => engineRef.current?.removeFromQueue(i)}
           onShuffle={(on) => engineRef.current?.setShuffle(on)}
+          onCycleRepeat={() => engineRef.current?.cycleRepeat()}
           onClear={() => {
             engineRef.current?.clearQueue()
             radioRef.current = null
