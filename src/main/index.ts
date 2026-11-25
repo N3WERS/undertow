@@ -54,8 +54,9 @@ function createWindow(): void {
       sandbox: false,
       nodeIntegration: false,
       spellcheck: false,
-      // анимации плеера не должны замедляться, когда окно не в фокусе
-      backgroundThrottling: false
+      // в фоне визуал и таймеры должны засыпать; звук и медиа-события
+      // продолжают работать, поэтому воспроизведение не прерывается
+      backgroundThrottling: true
     }
   })
 

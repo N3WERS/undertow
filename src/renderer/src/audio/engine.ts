@@ -98,11 +98,15 @@ export class AudioEngine {
   private normDb = 0
   private rms = 0
   private raf = 0
+  private timer: ReturnType<typeof setTimeout> | null = null
   private lastEmit = 0
+  private lastNormalize = 0
   private lastQuality: string | null = null
 
   constructor(private handlers: EngineHandlers) {
     this.loop = this.loop.bind(this)
+    this.onVisibility = this.onVisibility.bind(this)
+    document.addEventListener('visibilitychange', this.onVisibility)
   }
 
   /* ------------------------------- граф ---------------------------------- */
@@ -159,7 +163,7 @@ export class AudioEngine {
       this.gains.push(g)
     }
 
-    this.raf = requestAnimationFrame(this.loop)
+    this.syncLoop()
     return ctx
   }
 
@@ -234,6 +238,7 @@ export class AudioEngine {
     this.shuffled = Boolean(shuffled)
     this.shuffleTail = null
     this.playing = false
+    this.stopLoop()
     this.emitQueue()
   }
 
@@ -244,6 +249,7 @@ export class AudioEngine {
     this.shuffled = false
     this.shuffleTail = null
     this.playing = false
+    this.stopLoop()
     this.repeat = 'off'
     for (let i = 0; i < 2; i++) this.clearSlot(i)
     this.handlers.onTrackChange(null)
@@ -265,6 +271,8 @@ export class AudioEngine {
     if (this.playing) {
       this.playing = false
       el.pause()
+      this.emitSnapshot(performance.now(), false)
+      this.stopLoop()
     } else {
       this.playing = true
       await this.ctx?.resume()
@@ -273,6 +281,7 @@ export class AudioEngine {
       } catch (e) {
         this.handlers.onError(`Не играет: ${(e as Error).message}`)
       }
+      this.syncLoop()
     }
   }
 
@@ -332,6 +341,7 @@ export class AudioEngine {
     if (!this.queue.length) {
       this.index = -1
       this.playing = false
+      this.stopLoop()
       this.switchToken++
       for (let i = 0; i < 2; i++) this.clearSlot(i)
       this.handlers.onTrackChange(null)
@@ -447,6 +457,8 @@ export class AudioEngine {
     el.currentTime = Math.max(0, sec)
     // после прыжка старый замер громкости неактуален
     this.normDb = 0
+    // на паузе цикл уже остановлен — обновляем полосу вручную
+    this.emitSnapshot(performance.now(), this.playing)
   }
 
   /** Перезапускает текущий трек с чистого листа — после смены варианта подмены. */
@@ -480,6 +492,7 @@ export class AudioEngine {
       el.currentTime = 0
       this.handlers.onTrackChange(this.displayOf(track))
       this.emitCopy(track)
+      this.emitSnapshot(performance.now(), this.playing)
       if (wasPlaying) await el.play().catch(() => undefined)
       void this.preloadNext()
     } catch (e) {
@@ -489,7 +502,8 @@ export class AudioEngine {
 
   destroy(): void {
     this.destroyed = true
-    cancelAnimationFrame(this.raf)
+    this.stopLoop()
+    document.removeEventListener('visibilitychange', this.onVisibility)
     for (const el of this.els) {
       el.pause()
       el.removeAttribute('src')
@@ -534,6 +548,7 @@ export class AudioEngine {
       } catch (e) {
         this.handlers.onError(`Не удалось получить звук: ${(e as Error).message}`)
         this.playing = false
+        this.stopLoop()
         return
       }
     }
@@ -571,6 +586,8 @@ export class AudioEngine {
     }
 
     void this.preloadNext()
+    this.emitSnapshot(performance.now(), this.playing)
+    this.syncLoop()
   }
 
   private nextIndex(): number | null {
@@ -591,6 +608,7 @@ export class AudioEngine {
     void this.ctx?.resume()
     void el.play().catch((e) => this.handlers.onError(`Не играет: ${(e as Error).message}`))
     void this.preloadNext()
+    this.syncLoop()
   }
 
   private async preloadNext(): Promise<void> {
@@ -838,26 +856,30 @@ export class AudioEngine {
       void this.gaplessSwitch()
     } else {
       this.playing = false
-      this.handlers.onSnapshot({
-        playing: false,
-        time: this.els[this.active].duration || 0,
-        duration: this.els[this.active].duration || 0,
-        rms: 0,
-        gainDb: 0,
-        trackId: this.queue[this.index]?.id ?? null
-      })
+      this.emitSnapshot(performance.now(), false)
+      this.stopLoop()
     }
   }
 
   /* ------------------------------ цикл ------------------------------------ */
 
   private loop(): void {
+    this.raf = 0
+    this.timer = null
     if (this.destroyed) return
-    this.raf = requestAnimationFrame(this.loop)
     const el = this.els[this.active]
-    if (!el) return
+    if (!el) {
+      this.syncLoop()
+      return
+    }
 
-    if (el.src && this.playing) this.applyNormalization()
+    const now = performance.now()
+    // RMS читаем не чаще ~11 раз в секунду: на слух нормализация всё равно
+    // сглажена, а 60 замеров по 2048 сэмплов каждый кадр — лишняя нагрузка.
+    if (el.src && this.playing && now - this.lastNormalize >= 90) {
+      this.lastNormalize = now
+      this.applyNormalization()
+    }
 
     const duration = Number.isFinite(el.duration) ? el.duration : (this.queue[this.index]?.durationSec ?? 0)
     const time = el.src ? el.currentTime || 0 : 0
@@ -880,18 +902,60 @@ export class AudioEngine {
       }
     }
 
-    const now = performance.now()
-    if (now - this.lastEmit > 100) {
-      this.lastEmit = now
-      this.handlers.onSnapshot({
-        playing: this.playing,
-        time,
-        duration,
-        rms: this.rms,
-        gainDb: this.normDb,
-        trackId: this.queue[this.index]?.id ?? null
-      })
+    // в фоне интерфейс не виден, поэтому незачем будить React 10 раз в секунду
+    if (now - this.lastEmit > (document.hidden ? 800 : 100)) this.emitSnapshot(now)
+    if (this.playing) this.scheduleNext()
+  }
+
+  private emitSnapshot(now = performance.now(), playing = this.playing): void {
+    this.lastEmit = now
+    const el = this.els[this.active]
+    if (!el) return
+    const duration = Number.isFinite(el.duration) ? el.duration : (this.queue[this.index]?.durationSec ?? 0)
+    const time = el.src ? el.currentTime || 0 : 0
+    this.handlers.onSnapshot({
+      playing,
+      time,
+      duration,
+      rms: playing ? this.rms : 0,
+      gainDb: this.normDb,
+      trackId: this.queue[this.index]?.id ?? null
+    })
+  }
+
+  private scheduleNext(): void {
+    if (this.destroyed || !this.playing || this.raf || this.timer) return
+    // в фоне достаточно 8 проверок в секунду: стык всё равно ловим заранее,
+    // а rAF продолжал бы будить кадры и React без видимой пользы
+    if (document.hidden) this.timer = setTimeout(this.loop, 120)
+    else this.raf = requestAnimationFrame(this.loop)
+  }
+
+  private syncLoop(): void {
+    if (this.destroyed || !this.playing) {
+      this.stopLoop()
+      return
     }
+    this.scheduleNext()
+  }
+
+  private stopLoop(): void {
+    if (this.raf) {
+      cancelAnimationFrame(this.raf)
+      this.raf = 0
+    }
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+  }
+
+  private onVisibility(): void {
+    if (this.destroyed) return
+    this.stopLoop()
+    if (!this.playing) return
+    if (!document.hidden) this.emitSnapshot()
+    this.scheduleNext()
   }
 
   /**

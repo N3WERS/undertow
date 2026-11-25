@@ -760,19 +760,43 @@ export default function App() {
   /* ------------------- подмена на YouTube: прогрев и варианты ------------------ */
 
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const warmedRef = useRef(new Set<string>())
+  const warmedRef = useRef<string[]>([])
+  const pendingWarmRef = useRef<Track | null>(null)
+  const warmingRef = useRef(false)
+
+  const processWarm = useCallback(async (): Promise<void> => {
+    if (warmingRef.current) return
+    const next = pendingWarmRef.current
+    pendingWarmRef.current = null
+    if (!next || warmedRef.current.includes(next.id)) return
+
+    warmingRef.current = true
+    const warmed = warmedRef.current
+    warmed.push(next.id)
+    if (warmed.length > 400) warmed.splice(0, warmed.length - 400)
+    try {
+      await window.undertow.prewarm(next)
+    } catch {
+      // прогрев не критичен: трек всё равно резолвится при воспроизведении
+    } finally {
+      warmingRef.current = false
+      if (pendingWarmRef.current) void processWarm()
+    }
+  }, [])
+
   const hoverPrewarm = useCallback(
     (t: Track) => {
-      if (warmedRef.current.has(t.id)) return
+      if (warmedRef.current.includes(t.id)) return
       if (snap.trackId === t.id) return
       if (hoverTimer.current) clearTimeout(hoverTimer.current)
-      // небольшая задержка: не дёргаем yt-dlp, если курсор просто проехал мимо
+      // держим паузу дольше: yt-dlp — тяжёлый процесс, и курсор часто
+      // просто проезжает по списку, не задерживаясь на треке
       hoverTimer.current = setTimeout(() => {
-        warmedRef.current.add(t.id)
-        void window.undertow.prewarm(t)
-      }, 120)
+        pendingWarmRef.current = t
+        void processWarm()
+      }, 350)
     },
-    [snap.trackId]
+    [snap.trackId, processWarm]
   )
 
   // работаем с треком из очереди, а не с показанным: у выбранного варианта

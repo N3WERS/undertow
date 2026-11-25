@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 
 const W = 1000
@@ -185,19 +185,41 @@ interface Props {
 
 export default function TopoField({ started = false, playing = false }: Props): JSX.Element {
   const svgRef = useRef<SVGSVGElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.hidden)
+  const [inView, setInView] = useState(true)
+
+  const active = started && playing && !hidden && inView
+
+  useEffect(() => {
+    const onVisibility = () => setHidden(document.hidden)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
+  // «Течение» не должно рисоваться, когда герой ушёл за пределы экрана:
+  // анимация остаётся на паузе и продолжается с того же места при возврате.
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
 
   // SMIL-анимация градиента не умеет animation-play-state: ставим её на паузу
   // через SVG API. Время при этом сохраняется, поэтому при resume нет прыжка.
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
-    if (started && playing) svg.unpauseAnimations()
+    if (active) svg.unpauseAnimations()
     else svg.pauseAnimations()
-  }, [started, playing])
+  }, [active])
 
   return (
     <div
-      className={`flow-topo${started ? ' is-on' : ''}${started && playing ? ' is-playing' : ''}`}
+      ref={rootRef}
+      className={`flow-topo${started ? ' is-on' : ''}${active ? ' is-playing' : ''}`}
       aria-hidden="true"
     >
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice">
