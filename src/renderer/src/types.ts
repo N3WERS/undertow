@@ -86,6 +86,15 @@ export interface ProviderState {
   primary: 'yandex' | 'youtube'
 }
 
+export interface DpiStatus {
+  supported: boolean
+  available: boolean
+  running: boolean
+  state: 'off' | 'on' | 'starting' | 'stopping' | 'error' | 'unavailable'
+  path: string | null
+  error: string | null
+}
+
 export interface LibrarySnapshot {
   likes: Track[]
   history: Track[]
@@ -305,6 +314,9 @@ export interface UndertowApi {
   setYandexToken(token: string): Promise<ProviderState>
   clearYandexToken(): Promise<ProviderState>
   refreshYandex(): Promise<ProviderState>
+  dpiStatus(): Promise<DpiStatus>
+  dpiSet(on: boolean): Promise<DpiStatus>
+  dpiChoose(): Promise<DpiStatus>
   miniState(): Promise<boolean>
   setMini(on: boolean): Promise<boolean>
   toggleMini(): Promise<boolean>

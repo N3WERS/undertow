@@ -10,8 +10,13 @@ import * as releases from './releases'
 import * as offline from './offline'
 import * as savedAlbums from './savedAlbums'
 import * as genres from './genres'
+import * as dpi from './dpi'
 
 export function registerIpc(): void {
+  ipcMain.handle('dpi:status', async () => dpi.getStatus())
+  ipcMain.handle('dpi:set', async (_e, on: boolean) => dpi.setEnabled(Boolean(on)))
+  ipcMain.handle('dpi:choose', async () => dpi.chooseFolder())
+
   ipcMain.handle('home', async () => providers.home())
   ipcMain.handle('chart:top', async (_e, scope?: string, force?: boolean) =>
     providers.topChart(

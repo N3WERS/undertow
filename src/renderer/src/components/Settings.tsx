@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { ProviderState } from '../types'
+import { useEffect, useState } from 'react'
+import type { DpiStatus, ProviderState } from '../types'
 import { APP_AUTHOR, APP_VERSION } from '../version'
 
 interface Props {
@@ -15,7 +15,62 @@ interface Props {
 export default function Settings({ state, onState, onToast, crossfade, onCrossfade, normalize, onNormalize }: Props) {
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState<'save' | 'clear' | 'refresh' | null>(null)
+  const [dpi, setDpi] = useState<DpiStatus | null>(null)
+  const [dpiBusy, setDpiBusy] = useState(false)
   const yn = state?.yandex
+
+  useEffect(() => {
+    let alive = true
+    window.undertow
+      .dpiStatus()
+      .then((next) => {
+        if (alive) setDpi(next)
+      })
+      .catch(() => {
+        // настройки не должны падать из-за диагностики сети
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const refreshDpi = async () => {
+    try {
+      setDpi(await window.undertow.dpiStatus())
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : String(e), 'error')
+    }
+  }
+
+  const toggleDpi = async (next: boolean) => {
+    setDpiBusy(true)
+    try {
+      setDpi(await window.undertow.dpiSet(next))
+      onToast(
+        next
+          ? 'Обход DPI включён — YouTube должен открываться заметно быстрее'
+          : 'Обход DPI выключен'
+      )
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : String(e), 'error')
+      await refreshDpi()
+    } finally {
+      setDpiBusy(false)
+    }
+  }
+
+  const chooseDpi = async () => {
+    setDpiBusy(true)
+    try {
+      const next = await window.undertow.dpiChoose()
+      setDpi(next)
+      if (next.path) onToast('Папка zapret сохранена')
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setDpiBusy(false)
+    }
+  }
 
   const run = async (kind: 'save' | 'clear' | 'refresh') => {
     setBusy(kind)
@@ -46,12 +101,28 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
     }
   }
 
+  const dpiLabel =
+    dpi?.state === 'on'
+      ? 'включён'
+      : dpi?.state === 'starting'
+        ? 'запускаю'
+        : dpi?.state === 'stopping'
+          ? 'останавливаю'
+          : dpi?.state === 'error'
+            ? 'ошибка'
+            : dpi?.state === 'unavailable'
+              ? 'недоступен'
+              : dpi
+                ? 'выключен'
+                : 'проверяю'
+  const dpiCanToggle = Boolean(dpi?.supported) && Boolean(dpi?.available || dpi?.running) && !dpiBusy
+
   return (
     <div className="scroll">
       <div className="page-head">
         <div>
           <h1>Настройки</h1>
-          <p>Провайдеры, токен и качество</p>
+          <p>Провайдеры, сеть и качество</p>
         </div>
       </div>
 
@@ -176,6 +247,67 @@ export default function Settings({ state, onState, onToast, crossfade, onCrossfa
             </em>
           </span>
         </label>
+      </section>
+
+      <section className="panel surface-hero surface-deep">
+        <div className="panel-head">
+          <div>
+            <h2>Обход блокировок</h2>
+            <p>
+              YouTube в России часто открывается в разы медленнее из-за DPI. Здесь можно поднять локальный winws,
+              который меняет только TLS/QUIC-пакеты к доменам YouTube и Google. Остальной трафик не трогается.
+            </p>
+          </div>
+          <span className={`pill ${dpi?.state === 'on' ? 'ok' : 'off'}`}>{dpiLabel}</span>
+        </div>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={Boolean(dpi?.running)}
+            disabled={!dpiCanToggle}
+            onChange={(e) => void toggleDpi(e.target.checked)}
+          />
+          <span>
+            <b>Обход DPI для YouTube</b>
+            <em>
+              При включении Windows запросит права администратора — один раз на сессию обхода. Дальше winws
+              живёт в фоне, а при закрытии Undertow или выключении тумблера останавливается сам.
+            </em>
+          </span>
+        </label>
+
+        <div className="status-list">
+          <div>
+            <span>Состояние</span>
+            <b>{dpiLabel}</b>
+          </div>
+          <div>
+            <span>Папка zapret</span>
+            <b className="dpi-path" title={dpi?.path ?? ''}>
+              {dpi?.path ?? 'не найдена'}
+            </b>
+          </div>
+          <div>
+            <span>Правила</span>
+            <b>только YouTube и Google · порт 443</b>
+          </div>
+          <div>
+            <span>Права</span>
+            <b>{dpi?.running ? 'запущено с правами администратора' : 'UAC при включении'}</b>
+          </div>
+        </div>
+
+        {dpi?.error && <div className="notice">{dpi.error}</div>}
+
+        <div className="panel-foot">
+          <button className="link-btn" onClick={() => void chooseDpi()} disabled={!dpi?.supported || dpiBusy}>
+            Выбрать папку zapret
+          </button>
+          <button className="link-btn" onClick={() => void refreshDpi()} disabled={dpiBusy}>
+            Проверить
+          </button>
+        </div>
       </section>
 
       <section className="panel surface-hero surface-deep">

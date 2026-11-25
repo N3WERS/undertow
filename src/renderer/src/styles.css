@@ -1757,6 +1757,14 @@ img {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.dpi-path {
+  max-width: 380px;
+}
+@media (max-width: 1100px) {
+  .dpi-path {
+    max-width: 230px;
+  }
+}
 
 .notice {
   margin-top: 14px;
