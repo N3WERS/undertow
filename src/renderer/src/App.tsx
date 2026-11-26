@@ -18,6 +18,7 @@ import MiniPlayer from './components/MiniPlayer'
 import CloseDialog from './components/CloseDialog'
 import { IconShrink } from './components/Icons'
 import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
+import { loadEq, saveEq, type EqSettings } from './audio/eq'
 import { setProgress } from './audio/progress'
 import { onNotify } from './notify'
 import type {
@@ -194,8 +195,11 @@ export default function App() {
     setPickerTrack(null)
   }, [mini])
   const [volume, setVolume] = useState(() => readNum('undertow.volume', 0.85))
-  const [crossfade, setCrossfade] = useState(() => readNum('undertow.crossfade', 0))
+  const [crossfade, setCrossfade] = useState(() =>
+    Math.max(0, Math.min(15, Math.round(readNum('undertow.crossfade', 0))))
+  )
   const [normalize, setNormalize] = useState(() => localStorage.getItem('undertow.normalize') !== '0')
+  const [eq, setEq] = useState<EqSettings>(() => loadEq())
 
   const [lib, setLib] = useState<LibrarySnapshot>({ likes: [], history: [], stats: { likes: 0, history: 0, updatedAt: null } })
   const [savedAlbums, setSavedAlbums] = useState<SavedAlbum[]>([])
@@ -664,6 +668,11 @@ export default function App() {
     engineRef.current?.setOptions({ normalization: normalize })
     localStorage.setItem('undertow.normalize', normalize ? '1' : '0')
   }, [normalize])
+
+  useEffect(() => {
+    engineRef.current?.setEq(eq)
+    saveEq(eq)
+  }, [eq])
 
   useEffect(() => {
     engineRef.current?.setOptions({ volume })
@@ -1315,9 +1324,11 @@ export default function App() {
               }}
               onToast={toast}
               crossfade={crossfade}
-              onCrossfade={setCrossfade}
+              onCrossfade={(v) => setCrossfade(Math.max(0, Math.min(15, Math.round(v))))}
               normalize={normalize}
               onNormalize={setNormalize}
+              eq={eq}
+              onEq={setEq}
               dpi={dpi}
               onDpi={setDpi}
               focus={settingsFocus}

@@ -10,6 +10,7 @@
  *     с CORS (main/audioProxy.ts), иначе MediaElementSource даёт тишину.
  */
 import type { ResolvedStream, Track } from '../types'
+import { EQ_BANDS, clampEq, DEFAULT_EQ, type EqSettings } from './eq'
 
 /** off — не повторять; all — очередь по кругу; one — текущий трек */
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -96,6 +97,11 @@ export class AudioEngine {
   private gains: GainNode[] = []
   private master: GainNode | null = null
   private analyser: AnalyserNode | null = null
+  /** измерительный вход нормализации: до EQ и до лимитера */
+  private normAnalyser: AnalyserNode | null = null
+  /** общий вход эквалайзера: preamp → 10 фильтров → лимитер */
+  private eqPreamp: GainNode | null = null
+  private eqNodes: BiquadFilterNode[] = []
   private buf: Float32Array = new Float32Array(2048)
   private freqBuf: Uint8Array = new Uint8Array(1024)
   private level = 0
@@ -131,6 +137,7 @@ export class AudioEngine {
   private repeat: RepeatMode = 'off'
 
   private opts: EngineOptions = { crossfadeSec: 0, normalization: true, volume: 0.85 }
+  private eq: EqSettings = clampEq(DEFAULT_EQ)
   private normDb = 0
   private rms = 0
   private raf = 0
@@ -167,13 +174,44 @@ export class AudioEngine {
     analyser.fftSize = 2048
     analyser.smoothingTimeConstant = 0.55
 
-    master.connect(comp)
+    // Нормализация слушает громкость ДО эквалайзера: иначе подъём баса
+    // автоматически компенсировался бы и эквалайзер боролся бы сам с собой.
+    // Ветка измерения уходит в нулевой гейн, чтобы граф гарантированно
+    // проталкивал через неё сэмплы, но не дублировал звук.
+    const normAnalyser = ctx.createAnalyser()
+    normAnalyser.fftSize = 2048
+    normAnalyser.smoothingTimeConstant = 0.55
+    const silent = ctx.createGain()
+    silent.gain.value = 0
+    master.connect(normAnalyser)
+    normAnalyser.connect(silent)
+    silent.connect(ctx.destination)
+
+    const eqPreamp = ctx.createGain()
+    eqPreamp.gain.value = 1
+    master.connect(eqPreamp)
+    let tail: AudioNode = eqPreamp
+    const eqNodes = EQ_BANDS.map((hz) => {
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'peaking'
+      filter.frequency.value = hz
+      filter.Q.value = 1.2
+      filter.gain.value = 0
+      tail.connect(filter)
+      tail = filter
+      return filter
+    })
+    tail.connect(comp)
     comp.connect(analyser)
     analyser.connect(ctx.destination)
 
     this.master = master
     this.analyser = analyser
+    this.normAnalyser = normAnalyser
+    this.eqPreamp = eqPreamp
+    this.eqNodes = eqNodes
     this.buf = new Float32Array(analyser.fftSize)
+    this.applyEq()
 
     for (let i = 0; i < 2; i++) {
       const el = new Audio()
@@ -265,6 +303,23 @@ export class AudioEngine {
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(this.opts.volume * dbToGain(this.normDb), this.ctx.currentTime, 0.05)
     }
+  }
+
+  /** Настройки эквалайзера можно менять до создания графа — они применятся при старте. */
+  setEq(eq: EqSettings): void {
+    this.eq = clampEq(eq)
+    this.applyEq()
+  }
+
+  private applyEq(): void {
+    const ctx = this.ctx
+    if (!ctx || !this.eqPreamp) return
+    const now = ctx.currentTime
+    const on = this.eq.enabled
+    this.eqPreamp.gain.setTargetAtTime(on ? dbToGain(this.eq.preamp) : 1, now, 0.03)
+    this.eqNodes.forEach((filter, i) => {
+      filter.gain.setTargetAtTime(on ? this.eq.gains[i] ?? 0 : 0, now, 0.03)
+    })
   }
 
   async setQueue(tracks: Track[], startIndex: number): Promise<void> {
@@ -505,6 +560,21 @@ export class AudioEngine {
   async next(): Promise<void> {
     const target = this.nextIndex()
     if (target === null || target === this.index) return
+    // Если следующий трек уже прогрет, уходим в него коротким равномощным
+    // переходом: ручной «следующий» не должен щёлкать. Если слот пуст или
+    // движок уже переключается — обычный быстрый путь.
+    const slot = 1 - this.active
+    const next = this.queue[target]
+    if (
+      this.playing &&
+      !this.switching &&
+      next &&
+      this.loadedId[slot] === next.id &&
+      !this.els[slot]?.error
+    ) {
+      await this.beginCrossfade(0.28, 0.28)
+      return
+    }
     await this.hardSwitch(target)
   }
 
@@ -813,19 +883,21 @@ export class AudioEngine {
     this.syncLoop()
   }
 
-  /** Готовит ссылки на 2–3 трека вперёд, чтобы следующие переходы были без паузы. */
+  /**
+   * Готовит ссылки на 2–5 треков вперёд. Сам следующий трек уже загружен в
+   * аудио-слот, а здесь параллельно прогреваются URL для дальнейших стыков:
+   * к моменту перехода resolve отдаёт готовый поток без сетевой паузы.
+   */
   private async prewarmAhead(): Promise<void> {
     const token = this.preloadToken
-    for (let step = 2; step <= 5; step += 1) {
-      const target = this.queue[this.index + step]
-      if (!target) return
-      if (this.destroyed || token !== this.preloadToken) return
-      try {
-        await window.undertow.prewarm(target)
-      } catch {
-        /* прогрев необязателен */
-      }
-    }
+    const targets = [2, 3, 4, 5]
+      .map((step) => this.queue[this.index + step])
+      .filter((t): t is Track => Boolean(t) && !this.destroyed && token === this.preloadToken)
+    await Promise.all(
+      targets.map((target) =>
+        window.undertow.prewarm(target).catch(() => undefined)
+      )
+    )
   }
 
   private async preloadNext(): Promise<void> {
@@ -1181,7 +1253,7 @@ export class AudioEngine {
    * чтобы не было «дыхания» громкости.
    */
   private applyNormalization(): void {
-    const analyser = this.analyser
+    const analyser = this.normAnalyser
     const ctx = this.ctx
     const master = this.master
     if (!analyser || !ctx || !master) return

@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DpiStatus, ProviderState, UpdateState } from '../types'
 import { APP_AUTHOR, APP_VERSION } from '../version'
+import {
+  bandLabel,
+  EQ_BANDS,
+  EQ_PRESETS,
+  presetFor,
+  type EqSettings
+} from '../audio/eq'
 
 interface Props {
   state: ProviderState | null
@@ -10,6 +17,8 @@ interface Props {
   onCrossfade: (v: number) => void
   normalize: boolean
   onNormalize: (v: boolean) => void
+  eq: EqSettings
+  onEq: (v: EqSettings) => void
   dpi: DpiStatus | null
   onDpi: (s: DpiStatus) => void
   focus?: 'dpi' | 'updates' | null
@@ -24,6 +33,8 @@ export default function Settings({
   onCrossfade,
   normalize,
   onNormalize,
+  eq,
+  onEq,
   dpi,
   onDpi,
   focus,
@@ -38,6 +49,13 @@ export default function Settings({
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
   const yn = state?.yandex
+  const eqPreset = presetFor(eq.gains)
+
+  const setBand = (i: number, value: number) => {
+    const gains = [...eq.gains]
+    gains[i] = value
+    onEq({ ...eq, enabled: true, gains })
+  }
 
   useEffect(() => {
     let alive = true
@@ -243,18 +261,24 @@ export default function Settings({
         </div>
 
         <div className="field">
-          <label htmlFor="xfade">Переход между треками</label>
-          <select
+          <label htmlFor="xfade" className="range-label">
+            <span>Переход между треками</span>
+            <b>{crossfade === 0 ? 'gapless' : `${crossfade} с`}</b>
+          </label>
+          <input
             id="xfade"
-            className="input"
+            type="range"
+            className="range-input"
+            min={0}
+            max={15}
+            step={1}
             value={crossfade}
             onChange={(e) => onCrossfade(Number(e.target.value))}
-          >
-            <option value={0}>Без паузы (gapless)</option>
-            <option value={3}>Кроссфейд 3 с</option>
-            <option value={6}>Кроссфейд 6 с</option>
-            <option value={12}>Кроссфейд 12 с</option>
-          </select>
+          />
+          <div className="range-scale">
+            <span>без паузы</span>
+            <span>15 с</span>
+          </div>
         </div>
 
         <label className="check">
@@ -268,6 +292,78 @@ export default function Settings({
             </em>
           </span>
         </label>
+
+        <div className={`eq-block${eq.enabled ? '' : ' off'}`}>
+          <div className="eq-head">
+            <label className="check eq-switch">
+              <input
+                type="checkbox"
+                checked={eq.enabled}
+                onChange={(e) => onEq({ ...eq, enabled: e.target.checked })}
+              />
+              <span className="check-box" aria-hidden="true" />
+              <span className="check-copy">
+                <b>Эквалайзер</b>
+                <em>10 полос · {eqPreset?.label ?? 'Свой'}</em>
+              </span>
+            </label>
+            <button
+              className="eq-reset"
+              type="button"
+              onClick={() => onEq({ ...eq, preamp: 0, gains: EQ_BANDS.map(() => 0) })}
+            >
+              Сбросить
+            </button>
+          </div>
+
+          <div className="eq-presets" role="group" aria-label="Пресеты эквалайзера">
+            {EQ_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`eq-preset${eqPreset?.id === preset.id ? ' on' : ''}`}
+                onClick={() => onEq({ ...eq, enabled: true, gains: [...preset.gains] })}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="eq-bands">
+            {EQ_BANDS.map((hz, i) => (
+              <label className="eq-band" key={hz}>
+                <span className="eq-gain">{eq.gains[i] > 0 ? `+${eq.gains[i]}` : eq.gains[i]}</span>
+                <input
+                  type="range"
+                  min={-12}
+                  max={12}
+                  step={1}
+                  value={eq.gains[i]}
+                  aria-label={`${hz} Гц`}
+                  onChange={(e) => setBand(i, Number(e.target.value))}
+                />
+                <span className="eq-hz">{bandLabel(hz)}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="eq-preamp">
+            <label htmlFor="eq-preamp">Preamp</label>
+            <input
+              id="eq-preamp"
+              type="range"
+              min={-12}
+              max={0}
+              step={1}
+              value={eq.preamp}
+              onChange={(e) => onEq({ ...eq, enabled: true, preamp: Number(e.target.value) })}
+            />
+            <b>{eq.preamp > 0 ? `+${eq.preamp}` : eq.preamp} дБ</b>
+          </div>
+          <p className="eq-note">
+            Запас по громкости перед фильтрами. Если после подъёма баса слышны искажения — опусти preamp на 2–4 дБ.
+          </p>
+        </div>
       </section>
 
       <section id="settings-updates" ref={updatesRef} className="panel surface-hero surface-deep">
