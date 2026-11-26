@@ -6,9 +6,11 @@ import { useProgress } from '../audio/progress'
 import ArtistLine from './ArtistLine'
 import { usePanelOrigin } from './usePanelOrigin'
 import { removeOffline, saveTrack, useOffline } from '../offline'
+import { bandLabel, EQ_BANDS, EQ_PRESETS, presetFor, type EqSettings } from '../audio/eq'
 import {
   IconCheck,
   IconDownload,
+  IconEq,
   IconExpand,
   IconHeart,
   IconLayers,
@@ -77,20 +79,47 @@ interface Props {
   onExpand: () => void
   /** перейти в поиск, когда очередь пуста */
   onFindMusic: () => void
+  eq: EqSettings
+  onEq: (v: EqSettings) => void
+  /** закрыть другие поповеры плеера, чтобы открытым был только один */
+  onClosePanels: () => void
 }
 
 export default function PlayerBar(p: Props) {
   const progressRef = useRef<HTMLDivElement>(null)
   const versionsRef = useRef<HTMLDivElement>(null)
+  const eqRef = useRef<HTMLDivElement>(null)
+  const eqWrapRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState<string | null>(null)
+  const [eqOpen, setEqOpen] = useState(false)
+  const eqPreset = presetFor(p.eq.gains)
   const [hover, setHover] = useState<{ x: number; sec: number } | null>(null)
   const offline = useOffline()
   const saveProgress = p.track ? offline.progress[p.track.id] : undefined
   const savedLocal = p.track ? offline.ids.has(p.track.id) : false
   usePanelOrigin(versionsRef, '.alt-btn', Boolean(p.versions))
+  usePanelOrigin(eqRef, '.eq-btn', eqOpen)
 
   // список версий сменился (другой трек или новая загрузка) — фильтр сбрасываем
   useEffect(() => setFilter(null), [p.versions, p.track?.id])
+  useEffect(() => {
+    if (p.queueOpen || p.versions) setEqOpen(false)
+  }, [p.queueOpen, p.versions])
+  useEffect(() => {
+    if (!eqOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!eqWrapRef.current?.contains(e.target as Node)) setEqOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEqOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [eqOpen])
 
   const counts = new Map<string, number>()
   for (const v of p.versions?.list ?? []) counts.set(v.label, (counts.get(v.label) ?? 0) + 1)
@@ -537,6 +566,102 @@ export default function PlayerBar(p: Props) {
           >
             <IconListPlus width={14} height={14} />
           </button>
+          <div className="eq-wrap" ref={eqWrapRef}>
+            <button
+              className={`tool-btn eq-btn${p.eq.enabled ? ' on' : ''}${eqOpen ? ' open' : ''}`}
+              onClick={() => {
+                const next = !eqOpen
+                if (next) p.onClosePanels()
+                setEqOpen(next)
+              }}
+              title="Эквалайзер"
+              aria-label="Эквалайзер"
+              aria-haspopup="dialog"
+              aria-expanded={eqOpen}
+            >
+              <IconEq width={15} height={15} />
+              {p.eq.enabled && !eqOpen ? <span className="eq-on-dot" aria-hidden="true" /> : null}
+            </button>
+            {eqOpen ? (
+              <div className="eq-pop" ref={eqRef} role="dialog" aria-label="Эквалайзер">
+                <div className="eq-pop-head">
+                  <div className="eq-pop-title">
+                    <span>Эквалайзер</span>
+                    <b>
+                      {eqPreset?.label ?? 'Свой'} <i>· 10 полос</i>
+                    </b>
+                  </div>
+                  <button
+                    className={`eq-power${p.eq.enabled ? ' on' : ''}`}
+                    onClick={() => p.onEq({ ...p.eq, enabled: !p.eq.enabled })}
+                    aria-pressed={p.eq.enabled}
+                  >
+                    {p.eq.enabled ? 'вкл' : 'выкл'}
+                  </button>
+                </div>
+
+                <div className="eq-presets eq-pop-presets">
+                  {EQ_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      className={`eq-preset${eqPreset?.id === preset.id ? ' on' : ''}`}
+                      onClick={() => p.onEq({ ...p.eq, enabled: true, gains: [...preset.gains] })}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className={`eq-bands eq-pop-bands${p.eq.enabled ? '' : ' is-off'}`}>
+                  {EQ_BANDS.map((hz, i) => (
+                    <label className="eq-band" key={hz}>
+                      <span className="eq-gain">
+                        {p.eq.gains[i] > 0 ? `+${p.eq.gains[i]}` : p.eq.gains[i]}
+                      </span>
+                      <input
+                        type="range"
+                        min={-12}
+                        max={12}
+                        step={1}
+                        value={p.eq.gains[i]}
+                        aria-label={`${hz} Гц`}
+                        onChange={(e) => {
+                          const gains = [...p.eq.gains]
+                          gains[i] = Number(e.target.value)
+                          p.onEq({ ...p.eq, enabled: true, gains })
+                        }}
+                      />
+                      <span className="eq-hz">{bandLabel(hz)}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="eq-pop-foot">
+                  <div className="eq-preamp eq-pop-preamp">
+                    <label htmlFor="eq-preamp-pop">Preamp</label>
+                    <input
+                      id="eq-preamp-pop"
+                      type="range"
+                      min={-12}
+                      max={0}
+                      step={1}
+                      value={p.eq.preamp}
+                      onChange={(e) =>
+                        p.onEq({ ...p.eq, enabled: true, preamp: Number(e.target.value) })
+                      }
+                    />
+                    <b>{p.eq.preamp} дБ</b>
+                  </div>
+                  <button
+                    className="eq-reset"
+                    onClick={() => p.onEq({ ...p.eq, preamp: 0, gains: EQ_BANDS.map(() => 0) })}
+                  >
+                    Сброс
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <span className="tool-sep" aria-hidden="true" />
           <button
             className={`tool-btn norm-btn${p.normalize ? ' on' : ''}`}

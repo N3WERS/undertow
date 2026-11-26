@@ -180,6 +180,15 @@ export const IconQueue = (p: P) => (
   </svg>
 )
 
+export const IconEq = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 6.5h16M4 12h16M4 17.5h16" />
+    <circle cx="9" cy="6.5" r="2.1" fill="currentColor" />
+    <circle cx="15.5" cy="12" r="2.1" fill="currentColor" />
+    <circle cx="7" cy="17.5" r="2.1" fill="currentColor" />
+  </svg>
+)
+
 export const IconLayers = (p: P) => (
   <svg {...base(p)}>
     <path d="M12 3.5 3.5 8 12 12.5 20.5 8z" />

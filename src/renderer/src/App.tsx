@@ -1397,6 +1397,14 @@ export default function App() {
         onLike={() => track && toggleLike(track)}
         normalize={normalize}
         onNormalize={setNormalize}
+        eq={eq}
+        onEq={setEq}
+        onClosePanels={() => {
+          setQueueOpen(false)
+          setLyricsOpen(false)
+          setVersions(null)
+          setPickerTrack(null)
+        }}
         onToggle={toggle}
         onNext={() => go(1)}
         onPrev={() => go(-1)}
