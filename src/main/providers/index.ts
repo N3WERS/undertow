@@ -475,6 +475,13 @@ export interface SearchAll {
  * альбомы и артисты — всегда из YouTube Music: без токена это единственный
  * источник, который отдаёт все три разреза сразу.
  */
+/** Обычный YouTube: каверы и пользовательские загрузки, которых нет в YouTube Music. */
+export async function searchYoutube(query: string, limit = 20): Promise<Track[]> {
+  const term = String(query ?? '').trim()
+  if (!term) return []
+  return youtube.search(term, Math.max(1, Math.min(40, Math.floor(limit) || 20)))
+}
+
 /** Догрузка следующей порции поиска: те же треки, но глубже выдачи. */
 export async function searchMore(query: string, offset: number, limit = 20): Promise<Track[]> {
   const term = String(query ?? '').trim()

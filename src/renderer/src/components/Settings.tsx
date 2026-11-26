@@ -12,7 +12,7 @@ interface Props {
   onNormalize: (v: boolean) => void
   dpi: DpiStatus | null
   onDpi: (s: DpiStatus) => void
-  focus?: 'dpi' | null
+  focus?: 'dpi' | 'updates' | null
   onFocusDone?: () => void
 }
 
@@ -31,6 +31,7 @@ export default function Settings({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const dpiRef = useRef<HTMLElement>(null)
+  const updatesRef = useRef<HTMLElement>(null)
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState<'save' | 'clear' | 'refresh' | null>(null)
   const [dpiBusy, setDpiBusy] = useState(false)
@@ -53,11 +54,11 @@ export default function Settings({
     }
   }, [])
 
-  // плашка UndertowDPI в заголовке ведёт не просто в настройки, а прямо к блоку
+  // плашка в заголовке ведёт не просто в настройки, а прямо к нужному блоку
   useEffect(() => {
-    if (focus !== 'dpi') return
+    if (focus !== 'dpi' && focus !== 'updates') return
     const scroller = scrollRef.current
-    const target = dpiRef.current
+    const target = focus === 'dpi' ? dpiRef.current : updatesRef.current
     if (!scroller || !target) return
     const top =
       scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12
@@ -269,7 +270,7 @@ export default function Settings({
         </label>
       </section>
 
-      <section className="panel surface-hero surface-deep">
+      <section id="settings-updates" ref={updatesRef} className="panel surface-hero surface-deep">
         <div className="panel-head">
           <div>
             <h2>Обновления</h2>
@@ -317,9 +318,15 @@ export default function Settings({
         {update?.notes && <div className="update-notes">{update.notes}</div>}
 
         {update?.status === 'downloading' && (
-          <div className="update-progress" aria-label={`Скачано ${update.progress}%`}>
-            <span style={{ width: `${update.progress}%` }} />
-          </div>
+          <>
+            <div className="update-download-line">
+              <span>Скачиваю обновление…</span>
+              <b>{update.progress}%</b>
+            </div>
+            <div className="update-progress" aria-label={`Скачано ${update.progress}%`}>
+              <span style={{ width: `${update.progress}%` }} />
+            </div>
+          </>
         )}
 
         {update?.error && update.status !== 'disabled' && <div className="notice">{update.error}</div>}

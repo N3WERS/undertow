@@ -50,6 +50,8 @@ const api = {
   radioTrack: (track: unknown) => ipcRenderer.invoke('radio:track', track),
   search: (query: string) => ipcRenderer.invoke('search', query),
   searchAll: (query: string) => ipcRenderer.invoke('search:all', query),
+  searchYoutube: (query: string, limit = 20) =>
+    ipcRenderer.invoke('search:youtube', query, limit),
   searchMore: (query: string, offset: number, limit = 20) =>
     ipcRenderer.invoke('search:more', query, offset, limit),
   resolve: (trackId: string, fresh = false, meta?: unknown) => ipcRenderer.invoke('resolve', trackId, fresh, meta),

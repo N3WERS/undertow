@@ -344,6 +344,7 @@ export interface UndertowApi {
   prewarm(track: Track): Promise<void>
   search(query: string): Promise<Track[]>
   searchAll(query: string): Promise<SearchAll>
+  searchYoutube(query: string, limit?: number): Promise<Track[]>
   searchMore(query: string, offset: number, limit?: number): Promise<Track[]>
   resolve(trackId: string, fresh?: boolean, meta?: Track): Promise<ResolvedStream>
   state(): Promise<ProviderState>

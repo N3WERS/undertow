@@ -31,7 +31,8 @@ import type {
   Section,
   TopChart,
   Track,
-  TrackVersion
+  TrackVersion,
+  UpdateState
 } from './types'
 import { APP_VERSION } from './version'
 import appIcon from './assets/app-icon.png'
@@ -73,7 +74,8 @@ export default function App() {
   const [homeError, setHomeError] = useState<string | null>(null)
   const [state, setState] = useState<ProviderState | null>(null)
   const [dpi, setDpi] = useState<DpiStatus | null>(null)
-  const [settingsFocus, setSettingsFocus] = useState<'dpi' | null>(null)
+  const [update, setUpdate] = useState<UpdateState | null>(null)
+  const [settingsFocus, setSettingsFocus] = useState<'dpi' | 'updates' | null>(null)
   const dpiAutoTried = useRef(false)
   const [toasts, setToasts] = useState<Toast[]>([])
 
@@ -112,6 +114,21 @@ export default function App() {
       })
       .catch(() => undefined)
     const off = window.undertow.onMiniChange((on) => setMini(on))
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    void window.undertow
+      .updateState()
+      .then((s) => {
+        if (alive) setUpdate(s)
+      })
+      .catch(() => undefined)
+    const off = window.undertow.onUpdateState(setUpdate)
     return () => {
       alive = false
       off()
@@ -1047,6 +1064,63 @@ export default function App() {
         </div>
         <span className="titlebar-spacer" />
         <button
+          className={`status-chip dpi-chip update-chip ${
+            update?.status === 'available' ||
+            update?.status === 'downloading' ||
+            update?.status === 'downloaded'
+              ? 'on'
+              : update?.status === 'error'
+                ? 'off'
+                : ''
+          }`}
+          onClick={() => {
+            closeBrowse()
+            setSettingsFocus('updates')
+            setView('settings')
+          }}
+          title={
+            update?.status === 'available'
+              ? `Доступно обновление ${update.version}`
+              : update?.status === 'downloading'
+                ? `Скачиваю обновление: ${update.progress}%`
+                : update?.status === 'downloaded'
+                  ? 'Обновление скачано — установить в настройках'
+                  : update?.status === 'checking'
+                    ? 'Проверяю обновления'
+                    : update?.status === 'error'
+                      ? `Обновление: ${update.error ?? 'ошибка'}`
+                      : update?.status === 'none'
+                        ? 'Установлена последняя версия'
+                        : 'Открыть настройки обновлений'
+          }
+          aria-label="Обновления приложения"
+        >
+          <span
+            className={`dot${
+              update?.status === 'error'
+                ? ' bad'
+                : update?.status === 'checking' || update?.status === 'idle'
+                  ? ' yt'
+                  : ''
+            }`}
+          />
+          <span className="status-text update-chip-text">
+            {update?.status === 'available'
+              ? `Обновление ${update.version}`
+              : update?.status === 'downloading'
+                ? `Обновление · ${update.progress}%`
+                : update?.status === 'downloaded'
+                  ? 'Обновление готово'
+                  : update?.status === 'checking'
+                    ? 'Проверяю обновления'
+                    : update?.status === 'error'
+                      ? 'Ошибка обновления'
+                      : update?.status === 'none'
+                        ? 'Обновлений нет'
+                        : 'Обновления'}
+          </span>
+        </button>
+        <button
           className={`status-chip dpi-chip ${dpi?.state === 'on' || dpi?.running ? 'on' : 'off'}`}
           onClick={() => {
             closeBrowse()
@@ -1353,6 +1427,11 @@ export default function App() {
           setLyricsOpen(false)
           setVersions(null)
           setTheaterOpen(true)
+        }}
+        onFindMusic={() => {
+          closeBrowse()
+          setSettingsFocus(null)
+          setView('search')
         }}
       />
 

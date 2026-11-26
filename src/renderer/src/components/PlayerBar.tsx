@@ -22,6 +22,7 @@ import {
   IconQueue,
   IconRadio,
   IconRepeat,
+  IconSearch,
   IconShuffle,
   IconText,
   IconVolume,
@@ -74,6 +75,8 @@ interface Props {
   onVolume: (v: number) => void
   /** открыть полноэкранный плеер */
   onExpand: () => void
+  /** перейти в поиск, когда очередь пуста */
+  onFindMusic: () => void
 }
 
 export default function PlayerBar(p: Props) {
@@ -114,6 +117,35 @@ export default function PlayerBar(p: Props) {
     const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
     // подсказку не даём уезжать за края панели
     setHover({ x: Math.min(Math.max(ratio * r.width, 38), r.width - 38), sec: ratio * duration })
+  }
+
+  if (!p.track) {
+    return (
+      <footer className="player idle player-empty">
+        <div className="empty-player">
+          <span className="empty-player-mark" aria-hidden="true">
+            <span className="idle-bars">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+          </span>
+          <div className="empty-player-copy">
+            <b>Ничего не играет</b>
+            <span>Выбери трек на главной или найди его в поиске</span>
+          </div>
+          <span className="empty-player-state">очередь пуста</span>
+          <button className="empty-player-find" onClick={p.onFindMusic}>
+            <IconSearch width={15} height={15} />
+            Найти трек
+          </button>
+        </div>
+      </footer>
+    )
   }
 
   return (
