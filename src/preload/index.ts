@@ -15,8 +15,14 @@ const api = {
   queueGet: () => ipcRenderer.invoke('queue:get'),
   queueSave: (state: unknown) => ipcRenderer.invoke('queue:save', state),
   queueClear: () => ipcRenderer.invoke('queue:clear'),
-  flowStart: (genre?: string) => ipcRenderer.invoke('flow:start', genre),
+  flowStart: (options?: unknown) => ipcRenderer.invoke('flow:start', options),
   flowGenres: () => ipcRenderer.invoke('flow:genres'),
+  flowFeedback: (action: string, track: unknown) =>
+    ipcRenderer.invoke('flow:feedback', action, track),
+  flowNovelty: (value: number) => ipcRenderer.invoke('flow:novelty', value),
+  flowSeed: (action: 'include' | 'exclude', name: string) =>
+    ipcRenderer.invoke('flow:seed', action, name),
+  flowPlayed: (track: unknown) => ipcRenderer.invoke('flow:played', track),
   genreForArtist: (name: string, yandexId?: string) =>
     ipcRenderer.invoke('genres:artist', name, yandexId),
   lyrics: (track: unknown) => ipcRenderer.invoke('lyrics:get', track),

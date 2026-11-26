@@ -29,6 +29,7 @@ import type {
   SavedAlbum,
   ChartScope,
   DpiStatus,
+  FlowOptions,
   Section,
   TopChart,
   Track,
@@ -664,6 +665,26 @@ export default function App() {
     localStorage.setItem('undertow.crossfade', String(crossfade))
   }, [crossfade])
 
+  // клик вне открытого окна закрывает его — так же, как эквалайзер
+  useEffect(() => {
+    if (!queueOpen && !versions && !lyricsOpen) return
+    const onDown = (e: MouseEvent) => {
+      const target = e.target
+      if (!(target instanceof Element)) return
+      if (queueOpen && !target.closest('.queue-panel') && !target.closest('.queue-btn')) {
+        setQueueOpen(false)
+      }
+      if (versions && !target.closest('.versions-menu') && !target.closest('.alt-btn')) {
+        setVersions(null)
+      }
+      if (lyricsOpen && !target.closest('.lyrics-panel') && !target.closest('.lyrics-btn')) {
+        setLyricsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [queueOpen, versions, lyricsOpen])
+
   useEffect(() => {
     engineRef.current?.setOptions({ normalization: normalize })
     localStorage.setItem('undertow.normalize', normalize ? '1' : '0')
@@ -815,25 +836,48 @@ export default function App() {
     [playTrack, toast]
   )
 
-  const startFlow = useCallback(async (genre?: string) => {
+  const startFlow = useCallback(async (options?: FlowOptions) => {
     setFlowLoading(true)
     try {
-      const flow = await window.undertow.flowStart(genre)
+      const flow = await window.undertow.flowStart(options)
       if (!flow.tracks.length) throw new Error('Не удалось собрать поток')
       playTrack(flow.tracks[0], flow.tracks)
       flowRef.current = true
       setFlowActive(true)
-      toast(
-        genre
-          ? `Течение: ${genre} — ${flow.tracks.length} треков`
-          : `Течение: ${flow.tracks.length} треков, дальше подмешается само`
-      )
+      toast(`${flow.title}: ${flow.tracks.length} треков, дальше подмешается само`)
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
       setFlowLoading(false)
     }
   }, [playTrack, toast])
+
+  const flowFeedback = useCallback(
+    async (action: 'more' | 'less' | 'skipArtist', t: Track) => {
+      try {
+        const res = await window.undertow.flowFeedback(action, t)
+        if (res.tracks.length) engineRef.current?.appendQueue(res.tracks)
+        if (action === 'more') {
+          toast(res.tracks.length ? 'Добавил ещё такого же' : 'Этот артист будет звучать чаще')
+        } else if (action === 'less') {
+          toast('Больше не поставлю этот трек')
+          void engineRef.current?.next()
+        } else {
+          engineRef.current?.removeUpcomingByArtist(t.artist)
+          toast(`Пропускаю ${t.artist || 'артиста'} в этом течении`)
+          void engineRef.current?.next()
+        }
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), 'error')
+      }
+    },
+    [toast]
+  )
+
+  useEffect(() => {
+    if (!flowActive || !track) return
+    void window.undertow.flowPlayed(track).catch(() => undefined)
+  }, [flowActive, track])
 
   const [radioLoading, setRadioLoading] = useState(false)
   /** «похожее»: радио от конкретного трека (в отличие от радио артиста) */
@@ -1252,10 +1296,12 @@ export default function App() {
               playing={snap.playing}
               active={flowActive}
               loading={flowLoading}
-              onStart={(genre) => void startFlow(genre)}
+              onStart={(options) => void startFlow(options)}
               onPlay={playTrack}
               onToggle={toggle}
               onArtistRadio={(name) => void startRadio({ name })}
+              onFeedback={flowFeedback}
+              onToast={toast}
               radioLoading={radioLoading}
               onHover={hoverPrewarm}
             />

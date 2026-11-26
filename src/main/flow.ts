@@ -21,10 +21,53 @@ const NEIGHBOURS = 10
 const RING2_PICKS = 6
 const FIRST_FILL = 30
 const REFILL = 20
-/** как часто в поток попадает трек, который уже есть в библиотеке */
-const LIBRARY_CHANCE = 0.06
 /** минимум треков между «своими», чтобы они не шли подряд */
 const LIBRARY_GAP = 12
+
+export type FlowFeedback = 'more' | 'less' | 'skipArtist'
+
+export interface FlowRoute {
+  /** артист-семя, от которого пришёл трек */
+  seed: string
+  /** сосед, через которого он попал в поток */
+  via?: string
+  /** трек уже был в библиотеке */
+  library?: boolean
+}
+
+export interface FlowStats {
+  tracks: number
+  seconds: number
+  artists: number
+  newArtists: number
+  libraryTracks: number
+}
+
+export interface FlowOptions {
+  genres?: string[]
+  excludeGenres?: string[]
+  novelty?: number
+  includeSeeds?: string[]
+  excludeSeeds?: string[]
+}
+
+export interface FlowSeed {
+  id?: string
+  name: string
+  coverUrl?: string
+  weight?: number
+}
+
+export interface FlowInfo {
+  active: boolean
+  seeds: FlowSeed[]
+  genre?: string
+  genres: string[]
+  excludeGenres: string[]
+  novelty: number
+  routes: Record<string, FlowRoute>
+  stats: FlowStats
+}
 
 interface Pool {
   id: string
@@ -32,11 +75,7 @@ interface Pool {
   tracks: Track[]
 }
 
-interface SeedRef {
-  id?: string
-  name: string
-  coverUrl?: string
-}
+type SeedRef = FlowSeed
 
 interface Session {
   seeds: SeedRef[]
@@ -53,8 +92,34 @@ interface Session {
   ring: number
   /** с какого пула начинать круг: порядок артистов не должен повторяться */
   cursor: number
-  /** выбранный жанр (id корзины) или undefined — «всё» */
-  genre?: string
+  /** выбранные жанры: пусто — «всё» */
+  genres: string[]
+  /** жанры, которые нужно исключить */
+  excludeGenres: string[]
+  /** 0 — больше знакомого, 100 — больше нового */
+  novelty: number
+  /** артисты, закреплённые вручную */
+  included: Set<string>
+  /** артисты, исключённые вручную */
+  excluded: Set<string>
+  /** артисты, которых пропустили во время сессии */
+  blocked: Set<string>
+  /** артисты, которые должны звучать чаще */
+  boosted: Set<string>
+  /** id артиста → имя семени, от которого он пришёл */
+  parents: Map<string, string>
+  /** почему играет конкретный трек */
+  routes: Map<string, FlowRoute>
+  /** вес семян для полоски в интерфейсе */
+  seedWeights: Map<string, number>
+  stats: {
+    startedAt: number
+    tracks: number
+    seconds: number
+    artists: Set<string>
+    libraryTracks: number
+    knownArtists: Set<string>
+  }
 }
 
 let session: Session | null = null
@@ -123,21 +188,28 @@ function shuffle<T>(list: T[]): T[] {
  * а теги для всех соседей тянуть слишком дорого.
  */
 function keepArtist(s: Session, name: string): boolean {
-  if (!s.genre) return true
-  return !genres.known(name) || genres.matches(name, s.genre)
+  const key = flat(name)
+  if (s.excluded.has(key) || s.blocked.has(key)) return false
+  if (s.included.has(key)) return true
+  if (s.excludeGenres.some((g) => genres.matches(name, g))) return false
+  if (!s.genres.length) return true
+  return !genres.known(name) || s.genres.some((g) => genres.matches(name, g))
 }
 
 function poolsFrom(
   profiles: ({ id: string; name: string; tracks: Track[] } | null)[],
   libraryIds: Set<string>,
   used: Set<string>,
-  keys: Set<string>
+  keys: Set<string>,
+  routes?: Map<string, FlowRoute>,
+  routeFor?: (p: { id: string; name: string }) => FlowRoute
 ): Pool[] {
   const pools: Pool[] = []
   const seenArtist = new Set<string>()
   for (const p of profiles) {
     if (!p || seenArtist.has(p.id)) continue
     seenArtist.add(p.id)
+    const route = routeFor?.(p) ?? { seed: p.name }
     const tracks: Track[] = []
     for (const t of shuffle([...p.tracks])) {
       if (!t.playable || libraryIds.has(t.id) || used.has(t.id)) continue
@@ -145,10 +217,16 @@ function poolsFrom(
       if (!key || keys.has(key)) continue
       keys.add(key)
       tracks.push(t)
+      routes?.set(t.id, route)
     }
     if (tracks.length) pools.push({ id: p.id, name: p.name, tracks })
   }
   return pools
+}
+
+function routeTo(s: Session, p: { id: string; name: string }): FlowRoute {
+  const seed = s.parents.get(p.id) ?? p.name
+  return seed.toLowerCase() === p.name.toLowerCase() ? { seed } : { seed, via: p.name }
 }
 
 /**
@@ -164,8 +242,10 @@ function draw(s: Session, want: number): Track[] {
     // всегда одна и та же: Big Baby Tape, MACAN, kizaru…
     const start = s.pools.length ? s.cursor % s.pools.length : 0
     const order: Pool[] = start ? [...s.pools.slice(start), ...s.pools.slice(0, start)] : s.pools
+    // «Ещё такого»: усиленный артист проходит круг дважды
+    const boost = order.filter((p) => s.boosted.has(flat(p.name)))
     let advanced = false
-    for (const pool of order) {
+    for (const pool of [...order, ...boost]) {
       const last = out.length ? artistOf(out[out.length - 1]).toLowerCase() : ''
       while (pool.tracks.length) {
         const t = pool.tracks.shift() as Track
@@ -190,13 +270,16 @@ function draw(s: Session, want: number): Track[] {
     if (!advanced) break
   }
 
-  // «своё» — редко и не рядом с другим своим
+  // «своё» — редко и не рядом с другим своим. Слайдер новизны двигает
+  // вероятность от 1% до 15%: на «знакомом» библиотека звучит чаще.
   s.sinceLibrary += out.length
-  if (s.shelf.length && s.sinceLibrary >= LIBRARY_GAP && Math.random() < LIBRARY_CHANCE * out.length) {
+  const libraryChance = 0.01 + ((100 - s.novelty) / 100) * 0.14
+  if (s.shelf.length && s.sinceLibrary >= LIBRARY_GAP && Math.random() < libraryChance * out.length) {
     const pick = s.shelf[Math.floor(Math.random() * s.shelf.length)]
     if (pick && !s.used.has(pick.id)) {
       s.used.add(pick.id)
       s.keys.add(keyOf(pick.title))
+      s.routes.set(pick.id, { seed: 'ваша библиотека', library: true })
       out.splice(Math.max(1, out.length - 4), 0, pick)
       s.sinceLibrary = 0
     }
@@ -204,35 +287,46 @@ function draw(s: Session, want: number): Track[] {
   return out
 }
 
-async function expand(s: Session): Promise<boolean> {
-  const anchors = session?.artists.slice(0, 5) ?? []
+async function expand(sessionArg: Session | null = session): Promise<boolean> {
+  const s = sessionArg
+  if (!s) return false
+  const anchors = s.artists.slice(0, 5)
   if (!anchors.length) return false
   const profiles = await mapLimit(anchors, 3, (a) => youtube.musicArtist({ id: a.id }).catch(() => null))
   const seen = new Set<string>()
-  const candidates = profiles
-    .flatMap((p) => p?.related ?? [])
-    .filter(
-      (r) =>
-        !session?.known.has(r.id) &&
-        !seen.has(r.id) &&
-        (!session || keepArtist(session, r.name)) &&
-        (seen.add(r.id), true)
-    )
-    .slice(0, RING2_PICKS)
-  if (!candidates.length || !session) return false
-  for (const c of candidates) session.known.add(c.id)
+  const candidates: { id: string; name: string; parent: { id: string; name: string } }[] = []
+  for (let i = 0; i < profiles.length; i++) {
+    const p = profiles[i]
+    const anchor = anchors[i]
+    if (!p || !anchor) continue
+    for (const r of p.related) {
+      if (seen.has(r.id) || s.known.has(r.id)) continue
+      if (!keepArtist(s, r.name)) continue
+      seen.add(r.id)
+      candidates.push({ id: r.id, name: r.name, parent: anchor })
+      if (candidates.length >= RING2_PICKS) break
+    }
+    if (candidates.length >= RING2_PICKS) break
+  }
+  if (!candidates.length) return false
+  for (const c of candidates) {
+    s.known.add(c.id)
+    s.parents.set(c.id, s.parents.get(c.parent.id) ?? c.parent.name)
+  }
   const withTracks = await mapLimit(candidates, 3, (c) =>
     youtube.musicArtist({ id: c.id, name: c.name }).catch(() => null)
   )
   const pools = poolsFrom(
     withTracks.map((p) => (p ? { id: p.id, name: p.name, tracks: p.tracks } : null)),
-    session.libraryIds,
-    session.used,
-    session.keys
+    s.libraryIds,
+    s.used,
+    s.keys,
+    s.routes,
+    (p) => routeTo(s, p)
   )
   if (!pools.length) return false
-  session.pools.push(...pools)
-  session.ring = 2
+  s.pools.push(...pools)
+  s.ring = 2
   return true
 }
 
@@ -241,42 +335,71 @@ async function expand(s: Session): Promise<boolean> {
  * С `genre` (id корзины) семена ограничены этим жанром.
  */
 export async function start(
-  genre?: string
+  options: FlowOptions = {}
 ): Promise<{ title: string; seeds: SeedRef[]; tracks: Track[] }> {
+  const selectedGenres = [...new Set((options.genres ?? []).filter(Boolean))]
+  const excludedGenres = [...new Set((options.excludeGenres ?? []).filter(Boolean))]
+  const novelty = Math.max(0, Math.min(100, Math.round(options.novelty ?? 55)))
+  const includeNames = (options.includeSeeds ?? []).map((n) => n.trim()).filter(Boolean)
+  const excludedNames = (options.excludeSeeds ?? []).map((n) => n.trim()).filter(Boolean)
+  if (selectedGenres.length || excludedGenres.length) await genres.ensure().catch(() => undefined)
+
   const lib = snapshot()
-  let weights = artistWeights()
-  if (genre) {
-    await genres.ensure().catch(() => undefined)
-    const tagged = weights.filter((w) => genres.matches(w.name, genre))
-    if (!tagged.length) {
-      throw new Error(`В жанре «${genres.nameOf(genre)}» пока мало ваших артистов — выберите другой`)
-    }
-    weights = tagged
+  const libraryIds = new Set([...lib.likes, ...lib.history].map((t) => t.id))
+  const excludedKeys = new Set(excludedNames.map(flat))
+  const includedKeys = new Set(includeNames.map(flat))
+
+  const passName = (name: string): boolean => {
+    const key = flat(name)
+    if (excludedKeys.has(key)) return false
+    if (excludedGenres.some((g) => genres.matches(name, g))) return false
+    if (!selectedGenres.length) return true
+    return !genres.known(name) || selectedGenres.some((g) => genres.matches(name, g))
   }
-  if (weights.length < (genre ? 1 : 2)) {
-    throw new Error('В библиотеке мало артистов: лайкните несколько треков, и течение соберётся')
+
+  let weights = artistWeights().filter((w) => {
+    if (excludedKeys.has(flat(w.name))) return false
+    if (excludedGenres.some((g) => genres.matches(w.name, g))) return false
+    return !selectedGenres.length || selectedGenres.some((g) => genres.matches(w.name, g))
+  })
+
+  // закреплённые вручную артисты важнее случайного перекоса
+  let seedWeights = pickSeeds(weights, SEEDS)
+  for (const name of includeNames) {
+    if (excludedKeys.has(flat(name))) continue
+    if (seedWeights.some((w) => flat(w.name) === flat(name))) continue
+    const known = artistWeights().find((w) => flat(w.name) === flat(name))
+    seedWeights.push({ name, score: known?.score ?? 0 })
   }
-  /** соседи: чужих по жанру отсекаем, неизвестных пускаем */
-  const pass = (name: string): boolean =>
-    !genre || !genres.known(name) || genres.matches(name, genre)
+  seedWeights = seedWeights.filter((w) => !excludedKeys.has(flat(w.name)))
+
+  if (!seedWeights.length) {
+    throw new Error(
+      selectedGenres.length || excludedGenres.length
+        ? 'В выбранных жанрах пока мало ваших артистов — измените фильтр'
+        : 'В библиотеке мало артистов: лайкните несколько треков, и течение соберётся'
+    )
+  }
 
   // порядок семян тоже перемешиваем: соседи собираются с первых профилей,
   // и фиксированный порядок всегда вёл в окружение одного и того же артиста
-  const seedWeights = shuffle(pickSeeds(weights, SEEDS))
-  const libraryIds = new Set([...lib.likes, ...lib.history].map((t) => t.id))
-  const seedProfiles = await mapLimit(seedWeights, 3, (w) =>
+  const seedProfiles = await mapLimit(shuffle(seedWeights), 3, (w) =>
     youtube.musicArtist({ name: w.name }).catch(() => null)
   )
   const good = seedProfiles.filter((p): p is NonNullable<typeof p> => Boolean(p))
+  if (!good.length) throw new Error('Не удалось найти артистов для течения — попробуйте ещё раз')
 
   const known = new Set<string>()
+  const parents = new Map<string, string>()
   const neighbours: { id: string; name: string }[] = []
   for (const p of good) {
     known.add(p.id)
+    parents.set(p.id, p.name)
     for (const r of p.related) {
-      if (!pass(r.name)) continue
+      if (!passName(r.name)) continue
       if (known.has(r.id) || neighbours.some((n) => n.id === r.id)) continue
       neighbours.push({ id: r.id, name: r.name })
+      parents.set(r.id, p.name)
       if (neighbours.length >= NEIGHBOURS) break
     }
     if (neighbours.length >= NEIGHBOURS) break
@@ -288,34 +411,66 @@ export async function start(
 
   const used = new Set<string>()
   const keys = new Set<string>()
-  const pools = shuffle(
-    poolsFrom(
-      [...good, ...neighbourProfiles].map((p) => (p ? { id: p.id, name: p.name, tracks: p.tracks } : null)),
-      libraryIds,
-      used,
-      keys
-    )
-  )
-  if (!pools.length) throw new Error('Не удалось набрать треки: попробуйте ещё раз')
+  const routes = new Map<string, FlowRoute>()
+  const seedWeight = new Map(seedWeights.map((w) => [w.name, w.score]))
 
   const shelf = shuffle(
     lib.likes.filter((t) => t.playable && t.provider === 'youtube').slice(0, 400)
   ).slice(0, 40)
 
+  const knownArtists = new Set(
+    [...lib.likes, ...lib.history].map((t) => artistOf(t).toLowerCase()).filter(Boolean)
+  )
+
   const sess: Session = {
-    seeds: good.map((p) => ({ id: p.id, name: p.name, coverUrl: p.coverUrl })),
+    seeds: good.map((p) => ({
+      id: p.id,
+      name: p.name,
+      coverUrl: p.coverUrl,
+      weight: seedWeight.get(p.name) ?? 0
+    })),
     used,
     keys,
-    pools,
+    pools: [],
     artists: [...good, ...neighbourProfiles.filter(Boolean)].map((p) => ({ id: p!.id, name: p!.name })),
     known,
     libraryIds,
     shelf,
     sinceLibrary: LIBRARY_GAP,
     ring: 1,
-    cursor: Math.floor(Math.random() * Math.max(1, pools.length)),
-    genre
+    cursor: 0,
+    genres: selectedGenres,
+    excludeGenres: excludedGenres,
+    novelty,
+    included: includedKeys,
+    excluded: excludedKeys,
+    blocked: new Set(),
+    boosted: new Set(),
+    parents,
+    routes,
+    seedWeights: seedWeight,
+    stats: {
+      startedAt: Date.now(),
+      tracks: 0,
+      seconds: 0,
+      artists: new Set(),
+      libraryTracks: 0,
+      knownArtists
+    }
   }
+
+  sess.pools = shuffle(
+    poolsFrom(
+      [...good, ...neighbourProfiles].map((p) => (p ? { id: p.id, name: p.name, tracks: p.tracks } : null)),
+      libraryIds,
+      used,
+      keys,
+      routes,
+      (p) => routeTo(sess, p)
+    )
+  )
+  if (!sess.pools.length) throw new Error('Не удалось набрать треки: попробуйте ещё раз')
+  sess.cursor = Math.floor(Math.random() * Math.max(1, sess.pools.length))
   session = sess
 
   let tracks = draw(sess, FIRST_FILL)
@@ -328,11 +483,13 @@ export async function start(
   }
   if (tracks.length) lastOpenedArtist = artistOf(tracks[0]).toLowerCase()
   tracks = await youtube.fillYears(tracks, 8).catch(() => tracks)
-  return {
-    title: genre ? `Течение · ${genres.nameOf(genre)}` : 'Течение',
-    seeds: sess.seeds,
-    tracks
-  }
+  const title =
+    selectedGenres.length === 1
+      ? `Течение · ${genres.nameOf(selectedGenres[0])}`
+      : selectedGenres.length > 1
+        ? `Течение · ${selectedGenres.length} жанра`
+        : 'Течение'
+  return { title, seeds: sess.seeds, tracks }
 }
 
 /** Дозаправка: сначала остатки пулов, потом второй круг соседей. */
@@ -345,8 +502,137 @@ export async function more(): Promise<Track[]> {
   return [...batch, ...(await youtube.fillYears(draw(session, REFILL - batch.length), 5))]
 }
 
-export function info(): { active: boolean; seeds: SeedRef[]; genre?: string } {
-  return { active: Boolean(session), seeds: session?.seeds ?? [], genre: session?.genre }
+function statsOf(s: Session): FlowStats {
+  const artists = [...s.stats.artists]
+  return {
+    tracks: s.stats.tracks,
+    seconds: Math.round(s.stats.seconds),
+    artists: artists.length,
+    newArtists: artists.filter((a) => !s.stats.knownArtists.has(a.toLowerCase())).length,
+    libraryTracks: s.stats.libraryTracks
+  }
+}
+
+export function info(): FlowInfo {
+  const s = session
+  if (!s) {
+    return {
+      active: false,
+      seeds: [],
+      genres: [],
+      excludeGenres: [],
+      novelty: 55,
+      routes: {},
+      stats: { tracks: 0, seconds: 0, artists: 0, newArtists: 0, libraryTracks: 0 }
+    }
+  }
+  return {
+    active: true,
+    seeds: s.seeds.map((seed) => ({ ...seed, weight: s.seedWeights.get(seed.name) ?? seed.weight ?? 0 })),
+    genre: s.genres[0],
+    genres: s.genres,
+    excludeGenres: s.excludeGenres,
+    novelty: s.novelty,
+    routes: Object.fromEntries(s.routes.entries()),
+    stats: statsOf(s)
+  }
+}
+
+/** Учитывает фактически начатый трек: треки, минуты, новые артисты. */
+export function notePlayed(track: Track): void {
+  const s = session
+  if (!s) return
+  const artist = artistOf(track)
+  s.stats.tracks += 1
+  s.stats.seconds += Math.max(0, track.durationSec ?? 0)
+  if (artist) s.stats.artists.add(artist)
+  if (s.libraryIds.has(track.id)) s.stats.libraryTracks += 1
+}
+
+/** Слайдер новизны меняет плотность знакомых треков на лету. */
+export function setNovelty(value: number): FlowInfo {
+  if (session) session.novelty = Math.max(0, Math.min(100, Math.round(value)))
+  return info()
+}
+
+async function addSeedArtist(s: Session, name: string): Promise<boolean> {
+  const key = flat(name)
+  if (!key) return false
+  s.excluded.delete(key)
+  s.blocked.delete(key)
+  s.included.add(key)
+  if (s.pools.some((p) => flat(p.name) === key)) return true
+  const profile = await youtube.musicArtist({ name }).catch(() => null)
+  if (!profile) return false
+  s.known.add(profile.id)
+  s.parents.set(profile.id, profile.name)
+  const added = poolsFrom(
+    [{ id: profile.id, name: profile.name, tracks: profile.tracks }],
+    s.libraryIds,
+    s.used,
+    s.keys,
+    s.routes,
+    (p) => routeTo(s, p)
+  )
+  if (!added.length) return false
+  s.pools.push(...added)
+  if (!s.seeds.some((seed) => flat(seed.name) === key)) {
+    const weight = artistWeights().find((w) => flat(w.name) === key)?.score ?? 0
+    s.seeds.push({
+      id: profile.id,
+      name: profile.name,
+      coverUrl: profile.coverUrl,
+      weight
+    })
+    s.seedWeights.set(profile.name, weight)
+  }
+  return true
+}
+
+export async function seedAction(
+  action: 'include' | 'exclude',
+  name: string
+): Promise<FlowInfo> {
+  const s = session
+  const key = flat(name)
+  if (!s || !key) return info()
+  if (action === 'include') {
+    await addSeedArtist(s, name)
+  } else {
+    s.excluded.add(key)
+    s.blocked.add(key)
+    s.included.delete(key)
+    s.pools = s.pools.filter((p) => flat(p.name) !== key)
+    s.seeds = s.seeds.filter((seed) => flat(seed.name) !== key)
+    s.boosted.delete(key)
+  }
+  return info()
+}
+
+export async function feedback(
+  action: FlowFeedback,
+  track: Track
+): Promise<{ tracks: Track[] }> {
+  const s = session
+  if (!s) return { tracks: [] }
+  const artist = artistOf(track)
+  s.used.add(track.id)
+  s.keys.add(keyOf(track.title))
+
+  if (action === 'less') return { tracks: [] }
+
+  if (action === 'skipArtist') {
+    const key = flat(artist)
+    s.blocked.add(key)
+    s.pools = s.pools.filter((p) => flat(p.name) !== key)
+    return { tracks: [] }
+  }
+
+  // more: усиливаем артиста и по возможности добавляем его пул
+  s.boosted.add(flat(artist))
+  await addSeedArtist(s, artist)
+  const extra = draw(s, 6)
+  return { tracks: await youtube.fillYears(extra, 3).catch(() => extra) }
 }
 
 /** Список артистов для «откуда течёт» — без сетевых запросов. */

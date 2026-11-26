@@ -11,6 +11,7 @@ import * as releases from './releases'
 import * as offline from './offline'
 import * as savedAlbums from './savedAlbums'
 import * as genres from './genres'
+import type { FlowFeedback, FlowOptions } from './flow'
 import * as dpi from './dpi'
 import * as updater from './updater'
 import { log, logPath } from './log'
@@ -106,8 +107,16 @@ export function registerIpc(): void {
   )
   ipcMain.handle('queue:clear', async () => queueStore.clear())
 
-  ipcMain.handle('flow:start', async (_e, genre?: string) => providers.flowStart(genre))
+  ipcMain.handle('flow:start', async (_e, options?: FlowOptions) => providers.flowStart(options))
   ipcMain.handle('flow:genres', async () => providers.flowGenres())
+  ipcMain.handle('flow:feedback', async (_e, action: FlowFeedback, track: Track) =>
+    providers.flowFeedback(action, track)
+  )
+  ipcMain.handle('flow:novelty', async (_e, value: number) => providers.flowNovelty(Number(value)))
+  ipcMain.handle('flow:seed', async (_e, action: 'include' | 'exclude', name: string) =>
+    providers.flowSeed(action, String(name ?? ''))
+  )
+  ipcMain.handle('flow:played', async (_e, track: Track) => providers.flowPlayed(track))
   ipcMain.handle('genres:artist', async (_e, name: string, yandexId?: string) =>
     genres.forArtist(String(name ?? ''), yandexId ? String(yandexId) : undefined)
   )

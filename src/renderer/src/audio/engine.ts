@@ -483,6 +483,22 @@ export class AudioEngine {
     }
   }
 
+  /** Убирает из будущих треков очередь всё, что принадлежит артисту. */
+  removeUpcomingByArtist(artist: string): number {
+    const key = String(artist ?? '').split(',')[0].trim().toLowerCase()
+    if (!key || this.index < 0) return 0
+    const tail = this.queue.slice(this.index + 1)
+    const filtered = tail.filter(
+      (t) => String(t.artists?.[0]?.name ?? t.artist ?? '').split(',')[0].trim().toLowerCase() !== key
+    )
+    const removed = tail.length - filtered.length
+    if (!removed) return 0
+    this.queue = [...this.queue.slice(0, this.index + 1), ...filtered]
+    this.emitQueue()
+    void this.preloadNext()
+    return removed
+  }
+
   /** Добавить трек в очередь: сразу после текущего или в конец. */
   addToQueue(track: Track, where: 'next' | 'end' = 'end'): void {
     if (this.queue.some((t) => t.id === track.id)) {

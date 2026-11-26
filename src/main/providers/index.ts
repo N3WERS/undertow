@@ -199,15 +199,14 @@ export async function likeTrack(track: Track, liked: boolean): Promise<LikeResul
 
 /* -------------------------------- течение -------------------------------- */
 
-export async function flowStart(genre?: string): Promise<{
+export async function flowStart(options?: flow.FlowOptions): Promise<{
   title: string
-  seeds: { id?: string; name: string; coverUrl?: string }[]
+  seeds: flow.FlowSeed[]
   tracks: Track[]
 }> {
-  const id = typeof genre === 'string' && genre ? genre : undefined
-  const result = await flow.start(id)
+  const result = await flow.start(options)
   // запоминаем только после удачного запуска, чтобы ошибка не сбивала выбор
-  recPrefs.setFlowGenre(id)
+  recPrefs.setFlowGenre(options?.genres?.[0])
   return result
 }
 
@@ -221,12 +220,27 @@ export function flowMore(): Promise<Track[]> {
   return flow.more()
 }
 
-export function flowInfo(): {
-  active: boolean
-  seeds: { id?: string; name: string; coverUrl?: string }[]
-  genre?: string
-} {
+export function flowInfo(): flow.FlowInfo {
   return flow.info()
+}
+
+export function flowFeedback(
+  action: flow.FlowFeedback,
+  track: Track
+): Promise<{ tracks: Track[] }> {
+  return flow.feedback(action, track)
+}
+
+export function flowNovelty(value: number): flow.FlowInfo {
+  return flow.setNovelty(value)
+}
+
+export function flowSeed(action: 'include' | 'exclude', name: string): Promise<flow.FlowInfo> {
+  return flow.seedAction(action, name)
+}
+
+export function flowPlayed(track: Track): void {
+  flow.notePlayed(track)
 }
 
 export function flowSeeds(): { name: string; weight: number }[] {

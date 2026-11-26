@@ -431,7 +431,7 @@ export default function PlayerBar(p: Props) {
           <div className="player-tools">
           {p.track && p.hasLyrics ? (
             <button
-              className={`tool-btn${p.lyricsOpen ? ' open' : ''}`}
+              className={`tool-btn lyrics-btn${p.lyricsOpen ? ' open' : ''}`}
               onClick={p.onToggleLyrics}
               title="Текст песни (LRCLIB)"
               aria-label="Текст песни"
@@ -584,80 +584,103 @@ export default function PlayerBar(p: Props) {
             </button>
             {eqOpen ? (
               <div className="eq-pop" ref={eqRef} role="dialog" aria-label="Эквалайзер">
-                <div className="eq-pop-head">
-                  <div className="eq-pop-title">
-                    <span>Эквалайзер</span>
-                    <b>
-                      {eqPreset?.label ?? 'Свой'} <i>· 10 полос</i>
-                    </b>
-                  </div>
-                  <button
-                    className={`eq-power${p.eq.enabled ? ' on' : ''}`}
-                    onClick={() => p.onEq({ ...p.eq, enabled: !p.eq.enabled })}
-                    aria-pressed={p.eq.enabled}
-                  >
-                    {p.eq.enabled ? 'вкл' : 'выкл'}
-                  </button>
-                </div>
-
-                <div className="eq-presets eq-pop-presets">
-                  {EQ_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      className={`eq-preset${eqPreset?.id === preset.id ? ' on' : ''}`}
-                      onClick={() => p.onEq({ ...p.eq, enabled: true, gains: [...preset.gains] })}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className={`eq-bands eq-pop-bands${p.eq.enabled ? '' : ' is-off'}`}>
-                  {EQ_BANDS.map((hz, i) => (
-                    <label className="eq-band" key={hz}>
-                      <span className="eq-gain">
-                        {p.eq.gains[i] > 0 ? `+${p.eq.gains[i]}` : p.eq.gains[i]}
+                <div className="alt-head eq-pop-head">
+                  <span className="panel-art eq-art" aria-hidden="true">
+                    <IconEq width={19} height={19} />
+                  </span>
+                  <div className="panel-head-text">
+                    <span className="panel-kicker">
+                      Эквалайзер
+                      <span className="panel-bars" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
                       </span>
+                    </span>
+                    <b>{eqPreset?.label ?? 'Свой'}</b>
+                    <span>
+                      10 полос · Preamp {p.eq.preamp > 0 ? `+${p.eq.preamp}` : p.eq.preamp} дБ
+                    </span>
+                  </div>
+                  <div className="eq-pop-actions">
+                    <button
+                      className={`eq-power${p.eq.enabled ? ' on' : ''}`}
+                      onClick={() => p.onEq({ ...p.eq, enabled: !p.eq.enabled })}
+                      aria-pressed={p.eq.enabled}
+                    >
+                      {p.eq.enabled ? 'вкл' : 'выкл'}
+                    </button>
+                    <button
+                      className="icon-btn eq-close"
+                      onClick={() => setEqOpen(false)}
+                      title="Закрыть эквалайзер"
+                      aria-label="Закрыть эквалайзер"
+                    >
+                      <IconX width={15} height={15} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="eq-pop-body">
+                  <div className="eq-presets eq-pop-presets">
+                    {EQ_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        className={`alt-chip eq-pop-preset${eqPreset?.id === preset.id ? ' on' : ''}`}
+                        onClick={() => p.onEq({ ...p.eq, enabled: true, gains: [...preset.gains] })}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className={`eq-bands eq-pop-bands${p.eq.enabled ? '' : ' is-off'}`}>
+                    {EQ_BANDS.map((hz, i) => (
+                      <label className="eq-band" key={hz}>
+                        <span className="eq-gain">
+                          {p.eq.gains[i] > 0 ? `+${p.eq.gains[i]}` : p.eq.gains[i]}
+                        </span>
+                        <input
+                          type="range"
+                          min={-12}
+                          max={12}
+                          step={1}
+                          value={p.eq.gains[i]}
+                          aria-label={`${hz} Гц`}
+                          onChange={(e) => {
+                            const gains = [...p.eq.gains]
+                            gains[i] = Number(e.target.value)
+                            p.onEq({ ...p.eq, enabled: true, gains })
+                          }}
+                        />
+                        <span className="eq-hz">{bandLabel(hz)}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="eq-pop-foot">
+                    <div className="eq-preamp eq-pop-preamp">
+                      <label htmlFor="eq-preamp-pop">Preamp</label>
                       <input
+                        id="eq-preamp-pop"
                         type="range"
                         min={-12}
-                        max={12}
+                        max={0}
                         step={1}
-                        value={p.eq.gains[i]}
-                        aria-label={`${hz} Гц`}
-                        onChange={(e) => {
-                          const gains = [...p.eq.gains]
-                          gains[i] = Number(e.target.value)
-                          p.onEq({ ...p.eq, enabled: true, gains })
-                        }}
+                        value={p.eq.preamp}
+                        onChange={(e) =>
+                          p.onEq({ ...p.eq, enabled: true, preamp: Number(e.target.value) })
+                        }
                       />
-                      <span className="eq-hz">{bandLabel(hz)}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="eq-pop-foot">
-                  <div className="eq-preamp eq-pop-preamp">
-                    <label htmlFor="eq-preamp-pop">Preamp</label>
-                    <input
-                      id="eq-preamp-pop"
-                      type="range"
-                      min={-12}
-                      max={0}
-                      step={1}
-                      value={p.eq.preamp}
-                      onChange={(e) =>
-                        p.onEq({ ...p.eq, enabled: true, preamp: Number(e.target.value) })
-                      }
-                    />
-                    <b>{p.eq.preamp} дБ</b>
+                      <b>{p.eq.preamp} дБ</b>
+                    </div>
+                    <button
+                      className="eq-reset"
+                      onClick={() => p.onEq({ ...p.eq, preamp: 0, gains: EQ_BANDS.map(() => 0) })}
+                    >
+                      Сброс
+                    </button>
                   </div>
-                  <button
-                    className="eq-reset"
-                    onClick={() => p.onEq({ ...p.eq, preamp: 0, gains: EQ_BANDS.map(() => 0) })}
-                  >
-                    Сброс
-                  </button>
                 </div>
               </div>
             ) : null}

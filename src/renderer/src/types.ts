@@ -276,6 +276,39 @@ export interface PlayerReport {
   source: 'yandex' | 'youtube' | 'local' | null
 }
 
+export interface FlowOptions {
+  genres?: string[]
+  excludeGenres?: string[]
+  novelty?: number
+  includeSeeds?: string[]
+  excludeSeeds?: string[]
+}
+
+export interface FlowRoute {
+  seed: string
+  via?: string
+  library?: boolean
+}
+
+export interface FlowStats {
+  tracks: number
+  seconds: number
+  artists: number
+  newArtists: number
+  libraryTracks: number
+}
+
+export interface FlowInfo {
+  active: boolean
+  seeds: { id?: string; name: string; coverUrl?: string; weight?: number }[]
+  genre?: string
+  genres: string[]
+  excludeGenres: string[]
+  novelty: number
+  routes: Record<string, FlowRoute>
+  stats: FlowStats
+}
+
 export interface UndertowApi {
   home(): Promise<Section[]>
   topChart(scope?: ChartScope, force?: boolean): Promise<TopChart>
@@ -299,9 +332,9 @@ export interface UndertowApi {
   queueGet(): Promise<{ tracks: Track[]; index: number; shuffled: boolean; time: number; savedAt: number } | null>
   queueSave(state: { tracks: Track[]; index: number; shuffled: boolean }): Promise<void>
   queueClear(): Promise<void>
-  flowStart(genre?: string): Promise<{
+  flowStart(options?: FlowOptions): Promise<{
     title: string
-    seeds: { id?: string; name: string; coverUrl?: string }[]
+    seeds: { id?: string; name: string; coverUrl?: string; weight?: number }[]
     tracks: Track[]
   }>
   flowGenres(): Promise<{
@@ -322,11 +355,11 @@ export interface UndertowApi {
   playlistsImport(): Promise<{ created: number; skipped: number; titles: string[] }>
   playlistsExport(): Promise<string | null>
   flowMore(): Promise<Track[]>
-  flowInfo(): Promise<{
-    active: boolean
-    seeds: { id?: string; name: string; coverUrl?: string }[]
-    genre?: string
-  }>
+  flowInfo(): Promise<FlowInfo>
+  flowFeedback(action: 'more' | 'less' | 'skipArtist', track: Track): Promise<{ tracks: Track[] }>
+  flowNovelty(value: number): Promise<FlowInfo>
+  flowSeed(action: 'include' | 'exclude', name: string): Promise<FlowInfo>
+  flowPlayed(track: Track): Promise<void>
   flowSeeds(): Promise<{ name: string; weight: number }[]>
   artistRadio(ref: { id?: string; name?: string }): Promise<{ title: string; tracks: Track[] }>
   radioMore(ref: { id?: string; name?: string }): Promise<Track[]>
