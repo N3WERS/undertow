@@ -3,6 +3,7 @@ import type { Rectangle } from 'electron'
 import { join } from 'node:path'
 import { startAudioProxy, setLocalRoot } from './audioProxy'
 import { registerIpc } from './ipc'
+import { initUpdater } from './updater'
 import { warmFastClient } from './fastStream'
 import * as offline from './offline'
 import * as providers from './providers'
@@ -300,6 +301,7 @@ if (!singleInstance) {
     registerWindowIpc()
     createWindow()
     createTray()
+    initUpdater()
 
     // Быстрый InnerTube-клиент греем в фоне: первый resolve не должен
     // платить за создание сессии, но и запуск окна задерживать нельзя.

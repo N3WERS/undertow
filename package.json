@@ -1,6 +1,6 @@
 {
   "name": "undertow",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "private": true,
   "type": "module",
   "description": "Undertow — personal music streaming client",
@@ -24,6 +24,7 @@
     "vite": "^8.3.8"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "youtubei.js": "^18.3.0"
@@ -49,6 +50,18 @@
       {
         "from": "resources/zapret",
         "to": "zapret"
+      },
+      {
+        "from": "resources/bin",
+        "to": "bin"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "N3WERS",
+        "repo": "undertow-releases",
+        "releaseType": "release"
       }
     ],
     "asar": true,

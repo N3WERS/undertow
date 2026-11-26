@@ -71,8 +71,32 @@ export interface ResolvedStream {
   videoId?: string
 }
 
+export type UpdateStatus =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'none'
+  | 'error'
+
+export interface UpdateState {
+  status: UpdateStatus
+  currentVersion: string
+  version: string | null
+  notes: string | null
+  progress: number
+  error: string | null
+}
+
 export interface ProviderState {
-  youtube: { ready: boolean; ytdlp: string | null; python: string | null }
+  youtube: {
+    ready: boolean
+    ytdlp: string | null
+    python: string | null
+    engine: 'bundled' | 'system' | 'python' | null
+  }
   yandex: {
     hasToken: boolean
     valid: boolean
@@ -320,6 +344,7 @@ export interface UndertowApi {
   prewarm(track: Track): Promise<void>
   search(query: string): Promise<Track[]>
   searchAll(query: string): Promise<SearchAll>
+  searchMore(query: string, offset: number, limit?: number): Promise<Track[]>
   resolve(trackId: string, fresh?: boolean, meta?: Track): Promise<ResolvedStream>
   state(): Promise<ProviderState>
   setYandexToken(token: string): Promise<ProviderState>
@@ -330,6 +355,11 @@ export interface UndertowApi {
   log(message: string, data?: unknown): void
   logPath(): Promise<string>
   openLog(): Promise<string>
+  updateState(): Promise<UpdateState>
+  updateCheck(): Promise<UpdateState>
+  updateDownload(): Promise<UpdateState>
+  updateInstall(): Promise<boolean>
+  onUpdateState(cb: (state: UpdateState) => void): () => void
   miniState(): Promise<boolean>
   setMini(on: boolean): Promise<boolean>
   toggleMini(): Promise<boolean>

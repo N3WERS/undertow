@@ -12,9 +12,17 @@ import * as offline from './offline'
 import * as savedAlbums from './savedAlbums'
 import * as genres from './genres'
 import * as dpi from './dpi'
+import * as updater from './updater'
 import { log, logPath } from './log'
 
 export function registerIpc(): void {
+  ipcMain.handle('update:state', async () => updater.getUpdateState())
+  ipcMain.handle('update:check', async () => updater.checkForUpdates())
+  ipcMain.handle('update:download', async () => updater.downloadUpdate())
+  ipcMain.handle('update:install', async () => {
+    updater.installUpdate()
+    return true
+  })
   ipcMain.handle('dpi:status', async () => dpi.getStatus())
   ipcMain.handle('dpi:set', async (_e, on: boolean) => {
     log('dpi:set', on)
@@ -43,6 +51,9 @@ export function registerIpc(): void {
   ipcMain.handle('home:refresh', async () => providers.home(true))
   ipcMain.handle('search', async (_e, query: string) => providers.search(String(query ?? '')))
   ipcMain.handle('search:all', async (_e, query: string) => providers.searchAll(String(query ?? '')))
+  ipcMain.handle('search:more', async (_e, query: string, offset: number, limit?: number) =>
+    providers.searchMore(String(query ?? ''), Number(offset) || 0, Number(limit) || 20)
+  )
   ipcMain.handle('resolve', async (_e, id: string, fresh: boolean, meta?: Track) => {
     const t0 = Date.now()
     try {

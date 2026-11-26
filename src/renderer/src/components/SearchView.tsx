@@ -60,6 +60,9 @@ export default function SearchView({
   const [history, setHistory] = useState<string[]>(readHistory)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(20)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const lastQuery = useRef('')
   const [asked, setAsked] = useState(false)
@@ -87,6 +90,8 @@ export default function SearchView({
     setError(null)
     setAsked(true)
     lastQuery.current = term
+    setVisibleCount(20)
+    setHasMore(true)
     remember(term)
     try {
       const found = await window.undertow.searchAll(term)
@@ -109,6 +114,34 @@ export default function SearchView({
   }
 
   const empty = !tracks.length && !albums.length && !artists.length && !playlists.length
+  const visibleTracks = tracks.slice(0, visibleCount)
+
+  const loadMore = async () => {
+    if (loadingMore) return
+    setLoadingMore(true)
+    const target = visibleCount + 20
+    let all = tracks
+    let extraCount = 0
+    try {
+      if (all.length < target) {
+        const extra = await window.undertow.searchMore(lastQuery.current, all.length, 20)
+        extraCount = extra.length
+        const seen = new Set(all.map((t) => t.id))
+        const fresh = extra.filter((t) => !seen.has(t.id))
+        if (fresh.length) {
+          all = [...all, ...fresh]
+          setTracks(all)
+        }
+      }
+    } catch {
+      /* сеть отвалилась — оставляем уже загруженные треки */
+    } finally {
+      setLoadingMore(false)
+    }
+    const nextVisible = Math.min(target, all.length)
+    setVisibleCount(nextVisible)
+    setHasMore(all.length > nextVisible || extraCount >= 20)
+  }
 
   return (
     <div className="scroll search-page">
@@ -285,10 +318,10 @@ export default function SearchView({
         <section className="section fade-up">
           <div className="section-head">
             <h2>Треки</h2>
-            <span className="count">{tracks.length}</span>
+            <span className="count">{visibleTracks.length}</span>
           </div>
           <TrackList
-            tracks={tracks}
+            tracks={visibleTracks}
             currentId={currentId}
             playing={playing}
             onPlay={onPlay}
@@ -302,8 +335,19 @@ export default function SearchView({
             onOpenAlbum={onOpenAlbum}
             onAddToPlaylist={onAddToPlaylist}
             onSimilar={onSimilar}
-            showSource={new Set(tracks.map((r) => r.provider)).size > 1}
+            showSource={new Set(visibleTracks.map((r) => r.provider)).size > 1}
           />
+          {(hasMore || tracks.length > visibleCount) && (
+            <button
+              className="search-more"
+              type="button"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+            >
+              {loadingMore ? <span className="spinner" /> : null}
+              {loadingMore ? 'Загружаю…' : 'Показать ещё 20'}
+            </button>
+          )}
         </section>
       )}
     </div>

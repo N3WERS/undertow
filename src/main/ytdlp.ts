@@ -3,10 +3,23 @@
  * реальный аудио-URL (youtubei.js этого больше не может — SABR/PO-token).
  */
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { app } from 'electron'
 
-const CANDIDATES = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
-let resolvedPython: string | null = null
-let versionCache: string | null = null
+const PYTHON_CANDIDATES = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
+
+type RunnerKind = 'bundled' | 'system' | 'python'
+
+interface Runner {
+  cmd: string
+  prefix: string[]
+  kind: RunnerKind
+  version: string
+  path: string
+}
+
+let resolvedRunner: Runner | null = null
 
 function runOnce(
   cmd: string,
@@ -36,36 +49,98 @@ function runOnce(
   })
 }
 
-/** Ищет рабочий python с модулем yt_dlp. Кэширует результат. */
-export async function findPython(): Promise<string> {
-  if (resolvedPython) return resolvedPython
-  for (const cmd of CANDIDATES) {
+/**
+ * Ищет yt-dlp: сначала встроенный exe рядом с приложением, потом системный,
+ * и только в конце Python-модуль. Встроенный бинарник — основной путь,
+ * поэтому после установки Python не нужен.
+ */
+async function resolveRunner(): Promise<Runner> {
+  if (resolvedRunner) return resolvedRunner
+
+  const exeName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+  const bundled = app.isPackaged
+    ? [join(process.resourcesPath, 'bin', exeName)]
+    : [join(app.getAppPath(), 'resources', 'bin', exeName)]
+
+  for (const candidate of bundled) {
+    if (!existsSync(candidate)) continue
     try {
-      const { code, out } = await runOnce(cmd, ['-m', 'yt_dlp', '--version'], 20000)
+      const { code, out } = await runOnce(candidate, ['--version'], 20_000)
       if (code === 0) {
-        resolvedPython = cmd
-        versionCache = out.trim()
-        return cmd
+        resolvedRunner = {
+          cmd: candidate,
+          prefix: [],
+          kind: 'bundled',
+          version: out.trim(),
+          path: candidate
+        }
+        return resolvedRunner
+      }
+    } catch {
+      /* встроенный файл не запустился — пробуем системный */
+    }
+  }
+
+  for (const candidate of ['yt-dlp', exeName]) {
+    try {
+      const { code, out } = await runOnce(candidate, ['--version'], 20_000)
+      if (code === 0) {
+        resolvedRunner = {
+          cmd: candidate,
+          prefix: [],
+          kind: 'system',
+          version: out.trim(),
+          path: candidate
+        }
+        return resolvedRunner
       }
     } catch {
       /* пробуем следующий */
     }
   }
-  throw new Error('yt-dlp не найден. Установи: python -m pip install -U yt-dlp')
+
+  for (const cmd of PYTHON_CANDIDATES) {
+    try {
+      const { code, out } = await runOnce(cmd, ['-m', 'yt_dlp', '--version'], 20_000)
+      if (code === 0) {
+        resolvedRunner = {
+          cmd,
+          prefix: ['-m', 'yt_dlp'],
+          kind: 'python',
+          version: out.trim(),
+          path: `${cmd} -m yt_dlp`
+        }
+        return resolvedRunner
+      }
+    } catch {
+      /* пробуем следующий */
+    }
+  }
+
+  throw new Error(
+    'yt-dlp не найден: встроенный файл отсутствует, системный yt-dlp и Python-модуль недоступны'
+  )
 }
 
 export async function ytdlpVersion(): Promise<string | null> {
   try {
-    await findPython()
-    return versionCache
+    return (await resolveRunner()).version
+  } catch {
+    return null
+  }
+}
+
+export async function ytdlpInfo(): Promise<Runner | null> {
+  try {
+    return await resolveRunner()
   } catch {
     return null
   }
 }
 
 async function run(args: string[], timeoutMs = 90000, env?: Record<string, string>): Promise<string> {
-  const cmd = await findPython()
-  const { code, out, err } = await runOnce(cmd, ['-m', 'yt_dlp', ...args], timeoutMs, env)
+  const runner = await resolveRunner()
+  const { code, out, err } = await runOnce(runner.cmd, [...runner.prefix, ...args], timeoutMs, env)
   if (code !== 0) {
     const tail = err.trim().split('\n').slice(-2).join(' ')
     throw new Error(`yt-dlp: ${tail || `exit ${code}`}`)
@@ -313,11 +388,10 @@ export async function ytDownload(
 ): Promise<{ file: string; bytes: number }> {
   const { readdir, stat, rm } = await import('node:fs/promises')
   const path = await import('node:path')
-  const cmd = await findPython()
+  const runner = await resolveRunner()
   const template = path.join(dir, `${baseName}.%(ext)s`)
   const args = [
-    '-m',
-    'yt_dlp',
+    ...runner.prefix,
     '--no-warnings',
     '--force-ipv4',
     '--newline',
@@ -338,7 +412,7 @@ export async function ytDownload(
   ]
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(cmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
+    const child = spawn(runner.cmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
     let err = ''
     let last = -1
     const timer = setTimeout(() => {

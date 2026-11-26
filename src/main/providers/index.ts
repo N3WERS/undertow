@@ -12,7 +12,7 @@ import { proxifyLocal } from '../audioProxy'
 import * as library from '../library'
 import type { LibrarySnapshot } from '../library'
 import { getYandexToken, setYandexToken } from '../store'
-import { findPython, ytdlpVersion } from '../ytdlp'
+import { ytdlpInfo } from '../ytdlp'
 import * as youtube from './youtube'
 import * as yandex from './yandex'
 import * as recommend from '../recommend'
@@ -27,7 +27,12 @@ import * as lyrics from '../lyrics'
 import type { BrowsePage, ResolvedStream, Section, Track } from './types'
 
 export interface ProviderState {
-  youtube: { ready: boolean; ytdlp: string | null; python: string | null }
+  youtube: {
+    ready: boolean
+    ytdlp: string | null
+    python: string | null
+    engine: 'bundled' | 'system' | 'python' | null
+  }
   yandex: {
     hasToken: boolean
     valid: boolean
@@ -77,16 +82,15 @@ async function refreshYandexInner(): Promise<void> {
 
 export async function getState(): Promise<ProviderState> {
   if (!checkedAt) await refreshYandex()
-  const ytdlp = await ytdlpVersion()
-  let python: string | null = null
-  try {
-    python = await findPython()
-  } catch {
-    python = null
-  }
+  const info = await ytdlpInfo()
   const active = yandexReady()
   return {
-    youtube: { ready: Boolean(ytdlp), ytdlp, python },
+    youtube: {
+      ready: Boolean(info),
+      ytdlp: info?.version ?? null,
+      python: info?.kind === 'python' ? info.path : info ? 'не требуется' : null,
+      engine: info?.kind ?? null
+    },
     yandex: {
       hasToken: Boolean(getYandexToken()),
       valid: yandexValid,
@@ -471,6 +475,16 @@ export interface SearchAll {
  * альбомы и артисты — всегда из YouTube Music: без токена это единственный
  * источник, который отдаёт все три разреза сразу.
  */
+/** Догрузка следующей порции поиска: те же треки, но глубже выдачи. */
+export async function searchMore(query: string, offset: number, limit = 20): Promise<Track[]> {
+  const term = String(query ?? '').trim()
+  const start = Math.max(0, Math.floor(offset) || 0)
+  const size = Math.max(1, Math.min(20, Math.floor(limit) || 20))
+  if (!term) return []
+  const all = await youtube.search(term, Math.min(100, start + size + 10))
+  return all.slice(start, start + size)
+}
+
 export async function searchAll(query: string): Promise<SearchAll> {
   const term = String(query ?? '').trim()
   if (!term) return { tracks: [], albums: [], artists: [], playlists: [] }

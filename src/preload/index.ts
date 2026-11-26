@@ -50,6 +50,8 @@ const api = {
   radioTrack: (track: unknown) => ipcRenderer.invoke('radio:track', track),
   search: (query: string) => ipcRenderer.invoke('search', query),
   searchAll: (query: string) => ipcRenderer.invoke('search:all', query),
+  searchMore: (query: string, offset: number, limit = 20) =>
+    ipcRenderer.invoke('search:more', query, offset, limit),
   resolve: (trackId: string, fresh = false, meta?: unknown) => ipcRenderer.invoke('resolve', trackId, fresh, meta),
   debugFileInfo: (trackId: string) => ipcRenderer.invoke('debug:fileinfo', trackId),
   debugYm: (method: string, path: string, body?: string) => ipcRenderer.invoke('debug:ym', method, path, body),
@@ -73,6 +75,15 @@ const api = {
   log: (message: string, data?: unknown) => ipcRenderer.send('log', message, data),
   logPath: () => ipcRenderer.invoke('log:path'),
   openLog: () => ipcRenderer.invoke('log:open'),
+  updateState: () => ipcRenderer.invoke('update:state'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateState: (cb: (state: unknown) => void) => {
+    const handler = (_e: unknown, state: unknown) => cb(state)
+    ipcRenderer.on('update:state', handler)
+    return () => ipcRenderer.removeListener('update:state', handler)
+  },
   miniState: () => ipcRenderer.invoke('window:mini-state'),
   setMini: (on: boolean) => ipcRenderer.invoke('window:mini', on),
   toggleMini: () => ipcRenderer.invoke('window:mini-toggle'),

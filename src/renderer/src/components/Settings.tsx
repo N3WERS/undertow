@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { DpiStatus, ProviderState } from '../types'
+import type { DpiStatus, ProviderState, UpdateState } from '../types'
 import { APP_AUTHOR, APP_VERSION } from '../version'
 
 interface Props {
@@ -34,7 +34,24 @@ export default function Settings({
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState<'save' | 'clear' | 'refresh' | null>(null)
   const [dpiBusy, setDpiBusy] = useState(false)
+  const [update, setUpdate] = useState<UpdateState | null>(null)
+  const [updateBusy, setUpdateBusy] = useState(false)
   const yn = state?.yandex
+
+  useEffect(() => {
+    let alive = true
+    void window.undertow
+      .updateState()
+      .then((s) => {
+        if (alive) setUpdate(s)
+      })
+      .catch(() => undefined)
+    const off = window.undertow.onUpdateState(setUpdate)
+    return () => {
+      alive = false
+      off()
+    }
+  }, [])
 
   // плашка UndertowDPI в заголовке ведёт не просто в настройки, а прямо к блоку
   useEffect(() => {
@@ -252,6 +269,104 @@ export default function Settings({
         </label>
       </section>
 
+      <section className="panel surface-hero surface-deep">
+        <div className="panel-head">
+          <div>
+            <h2>Обновления</h2>
+            <p>
+              Проверяет новые релизы Undertow на GitHub. Скачивание и установка запускаются
+              только вручную — приложение не перезапустится без твоего согласия.
+            </p>
+          </div>
+          <span
+            className={`pill ${
+              update?.status === 'available' || update?.status === 'downloaded'
+                ? 'ok'
+                : update?.status === 'error'
+                  ? 'off'
+                  : ''
+            }`}
+          >
+            {update?.status === 'checking'
+              ? 'проверяю'
+              : update?.status === 'available'
+                ? 'есть обновление'
+                : update?.status === 'downloading'
+                  ? `${update.progress}%`
+                  : update?.status === 'downloaded'
+                    ? 'готово'
+                    : update?.status === 'error'
+                      ? 'ошибка'
+                      : update?.status === 'disabled'
+                        ? 'в установленной версии'
+                        : 'актуально'}
+          </span>
+        </div>
+
+        <div className="status-list">
+          <div>
+            <span>Установлено</span>
+            <b>{update?.currentVersion ?? APP_VERSION}</b>
+          </div>
+          <div>
+            <span>Доступно</span>
+            <b>{update?.version ?? '—'}</b>
+          </div>
+        </div>
+
+        {update?.notes && <div className="update-notes">{update.notes}</div>}
+
+        {update?.status === 'downloading' && (
+          <div className="update-progress" aria-label={`Скачано ${update.progress}%`}>
+            <span style={{ width: `${update.progress}%` }} />
+          </div>
+        )}
+
+        {update?.error && update.status !== 'disabled' && <div className="notice">{update.error}</div>}
+        {update?.status === 'disabled' && (
+          <div className="notice">Автообновление работает в установленной версии приложения.</div>
+        )}
+
+        <div className="panel-foot">
+          {update?.status === 'available' ? (
+            <button
+              className="play-btn"
+              type="button"
+              onClick={() => {
+                void window.undertow.updateDownload().then(setUpdate)
+              }}
+            >
+              Скачать {update.version}
+            </button>
+          ) : update?.status === 'downloaded' ? (
+            <button
+              className="play-btn"
+              type="button"
+              onClick={() => void window.undertow.updateInstall()}
+            >
+              Установить и перезапустить
+            </button>
+          ) : (
+            <button
+              className="link-btn"
+              type="button"
+              disabled={updateBusy || update?.status === 'checking' || update?.status === 'downloading'}
+              onClick={() => {
+                setUpdateBusy(true)
+                void window.undertow
+                  .updateCheck()
+                  .then(setUpdate)
+                  .catch((e) => onToast(e instanceof Error ? e.message : String(e), 'error'))
+                  .finally(() => setUpdateBusy(false))
+              }}
+            >
+              {update?.status === 'checking' ? 'Проверяю…' : 'Проверить обновления'}
+            </button>
+          )}
+          <span className="settings-hint">Проверка также идёт при запуске и раз в 4 часа</span>
+        </div>
+      </section>
+
       <section id="settings-dpi" ref={dpiRef} className="panel surface-hero surface-deep">
         <div className="panel-head">
           <div>
@@ -353,8 +468,16 @@ export default function Settings({
             <b>{state?.youtube.ytdlp ?? '—'}</b>
           </div>
           <div>
-            <span>python</span>
-            <b>{state?.youtube.python ?? '—'}</b>
+            <span>движок</span>
+            <b>
+              {state?.youtube.engine === 'bundled'
+                ? 'встроенный'
+                : state?.youtube.engine === 'python'
+                  ? 'python'
+                  : state?.youtube.engine === 'system'
+                    ? 'системный'
+                    : '—'}
+            </b>
           </div>
           <div>
             <span>Кодек</span>
