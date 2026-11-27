@@ -13,6 +13,8 @@ interface Props {
   onLocked?: (track: Track) => void
   limit?: number
   showSource?: boolean
+  /** показывать плашку official у каталожных и верифицированных треков */
+  showOfficial?: boolean
   /** id лайкнутых треков — если передано, в строках появляется сердечко */
   likedIds?: Set<string>
   onLike?: (track: Track) => void
@@ -38,7 +40,18 @@ interface Props {
   ranked?: boolean
 }
 
-const SRC_LABEL: Record<string, string> = { yandex: 'Я', youtube: 'YT' }
+function sourcePill(track: Track): { cls: string; label: string; title: string } {
+  if (track.provider === 'yandex') {
+    return { cls: 'yandex', label: 'YM', title: 'Источник: Яндекс.Музыка' }
+  }
+  if (track.provider === 'soundcloud') {
+    return { cls: 'soundcloud', label: 'SC', title: 'Источник: SoundCloud' }
+  }
+  if (track.catalog) {
+    return { cls: 'ytmusic', label: 'YTM', title: 'Источник: YouTube Music' }
+  }
+  return { cls: 'youtube', label: 'YT', title: 'Источник: YouTube' }
+}
 
 export function fmtTime(sec: number | null): string {
   if (sec == null || !Number.isFinite(sec)) return '—'
@@ -57,6 +70,7 @@ export default function TrackList({
   onLocked,
   limit,
   showSource,
+  showOfficial,
   likedIds,
   onLike,
   onHover,
@@ -78,6 +92,7 @@ export default function TrackList({
       {list.map((t, i) => {
         const isCurrent = t.id === currentId
         const liked = likedIds?.has(t.id) ?? false
+        const source = sourcePill(t)
         const activate = () =>
           t.playable
             ? isCurrent
@@ -146,12 +161,14 @@ export default function TrackList({
             <span className="track-text">
               <span className="track-title-row">
                 <span className="track-title">{t.title}</span>
+                {showOfficial && t.official ? (
+                  <span className="official-pill" title="Официальная версия исполнителя">
+                    official
+                  </span>
+                ) : null}
                 {showSource && (
-                  <span
-                    className={`src-pill ${t.provider === 'yandex' ? 'yandex' : 'youtube'}`}
-                    title={t.provider === 'yandex' ? 'Источник: Яндекс.Музыка' : 'Источник: YouTube'}
-                  >
-                    {t.provider === 'yandex' ? 'YM' : 'YT'}
+                  <span className={`src-pill ${source.cls}`} title={source.title}>
+                    {source.label}
                   </span>
                 )}
               </span>

@@ -3,7 +3,7 @@
 export interface Track {
   /** `yt:<videoId>` — пока единственный провайдер */
   id: string
-  provider: 'youtube' | 'yandex'
+  provider: 'youtube' | 'yandex' | 'soundcloud'
   title: string
   artist: string
   /** id исполнителя в провайдере (если известен) — чтобы открыть его страницу */
@@ -23,6 +23,14 @@ export interface Track {
   /** строка-подпись из ответа YouTube Music, если есть */
   subtitle?: string
   playable: boolean
+  /** официальный каталожный трек или загрузка с канала исполнителя */
+  official?: boolean
+  /** результат каталога YouTube Music (а не обычной выдачи YouTube) */
+  catalog?: boolean
+  /** исходный порядок результата в каталоге YouTube Music */
+  catalogRank?: number
+  /** обычная загрузка с верифицированного канала */
+  verified?: boolean
 }
 
 /** Страница артиста или альбома (пока только Яндекс). */
@@ -67,13 +75,15 @@ export interface ResolvedStream {
   /** вариант выбран вручную: играет как самостоятельный трек (его можно лайкнуть) */
   variant?: boolean
   /** откуда реально пришёл звук (может отличаться от provider трека) */
-  source?: 'yandex' | 'youtube' | 'local'
+  source?: 'yandex' | 'youtube' | 'local' | 'soundcloud'
   /** id видео выбранного варианта */
   variantVideoId?: string
   /** id YouTube-видео, если звук пришёл с YouTube (для локального сохранения) */
   videoId?: string
   /** ссылка получена быстрым InnerTube-путём: первые 1 МиБ, дальше fallback */
   fast?: boolean
+  /** поток приходит HLS-плейлистом (SoundCloud) */
+  hls?: boolean
   /** найдена не точная копия, а близкий вариант */
   fallbackApprox?: boolean
 }

@@ -152,6 +152,9 @@ export interface YtdlpEntry {
   id: string
   title: string
   uploader: string
+  /** канал загрузки и его верификация — нужны, чтобы отличить официальный трек */
+  channelId: string | null
+  verified: boolean
   duration: number | null
   thumbnail: string | null
   isLive: boolean
@@ -170,6 +173,8 @@ export async function ytSearch(query: string, limit = 24): Promise<YtdlpEntry[]>
       id: String(e.id),
       title: String(e.title ?? ''),
       uploader: String(e.uploader ?? e.channel ?? ''),
+      channelId: typeof e.channel_id === 'string' ? e.channel_id : null,
+      verified: e.channel_is_verified === true,
       duration: typeof e.duration === 'number' ? e.duration : null,
       thumbnail: best?.url ?? null,
       isLive: e.live_status === 'is_live',

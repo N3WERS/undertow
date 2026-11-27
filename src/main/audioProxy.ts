@@ -16,7 +16,16 @@ import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { log } from './log'
 
-const ALLOWED_HOSTS = ['.googlevideo.com', 'googlevideo.com', '.yandex.net', 'yandex.net', '.yandex.ru', 'yandex.ru']
+const ALLOWED_HOSTS = [
+  '.googlevideo.com',
+  'googlevideo.com',
+  '.yandex.net',
+  'yandex.net',
+  '.yandex.ru',
+  'yandex.ru',
+  '.soundcloud.cloud',
+  '.sndcdn.com'
+]
 
 /** первые 1 МиБ быстрой ссылки; дальше подставляем полный yt-dlp-URL */
 const FAST_CHUNK = 1024 * 1024

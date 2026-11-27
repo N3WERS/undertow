@@ -6,6 +6,7 @@
  * от Плюса, протухших ссылок googlevideo и доступна без сети.
  */
 import { app } from 'electron'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
@@ -23,7 +24,7 @@ export interface OfflineEntry {
   bytes: number
   bitrateKbps?: number
   savedAt: number
-  source: 'yandex' | 'youtube'
+  source: 'yandex' | 'youtube' | 'soundcloud'
 }
 
 export interface OfflineSnapshot {
@@ -148,6 +149,86 @@ function mimeOf(ext: string): string {
   return 'audio/webm'
 }
 
+function runCurl(url: string, timeoutMs: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'curl.exe',
+      [
+        '-sS',
+        '-L',
+        '--compressed',
+        '--max-time',
+        String(Math.max(5, Math.round(timeoutMs / 1000))),
+        '-A',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Undertow/1.0',
+        url
+      ],
+      { encoding: 'buffer', maxBuffer: 24 * 1024 * 1024, windowsHide: true, timeout: timeoutMs + 2_000 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`сегмент не скачался: ${String(stderr || error.message).trim().slice(0, 100)}`))
+          return
+        }
+        resolve(stdout)
+      }
+    )
+  })
+}
+
+/**
+ * SoundCloud отдаёт только HLS: fMP4-плейлист из init-сегмента и кусочков.
+ * Скачиваем их по порядку и склеиваем в один m4a — это валидный MP4.
+ */
+async function downloadHls(
+  url: string,
+  target: string,
+  bitrateKbps: number | undefined,
+  report: (received: number, total: number, status: OfflineProgress['status']) => void
+): Promise<{ bytes: number; total: number }> {
+  const playlist = (await runCurl(url, 30_000)).toString('utf8')
+  if (!playlist.includes('#EXTM3U')) throw new Error('SoundCloud вернул не HLS-плейлист')
+  if (/#EXT-X-KEY/i.test(playlist)) throw new Error('HLS-поток зашифрован — сохранение не поддерживается')
+
+  const base = new URL(url)
+  const resolve = (value: string): string => new URL(value, base).toString()
+  const lines = playlist.replace(/\r/g, '').split(/\n/)
+  let init: string | null = null
+  let duration = 0
+  const segments: string[] = []
+  for (const line of lines) {
+    const map = /^#EXT-X-MAP:URI="([^"]+)"/.exec(line)
+    if (map?.[1]) init = resolve(map[1])
+    const inf = /^#EXTINF:([\d.]+)/.exec(line)
+    if (inf?.[1]) duration += Number(inf[1]) || 0
+    if (line && !line.startsWith('#')) segments.push(resolve(line.trim()))
+  }
+  if (!segments.length) throw new Error('В HLS-плейлисте нет сегментов')
+
+  const expected = bitrateKbps
+    ? Math.round((duration * bitrateKbps * 1000) / 8)
+    : segments.length * 180_000
+  let received = 0
+  report(0, expected, 'downloading')
+
+  if (init) {
+    const head = await runCurl(init, 30_000)
+    await fsp.writeFile(target, head)
+    received += head.length
+    report(received, expected, 'downloading')
+  } else {
+    await fsp.writeFile(target, Buffer.alloc(0))
+  }
+
+  for (const segment of segments) {
+    const chunk = await runCurl(segment, 45_000)
+    await fsp.appendFile(target, chunk)
+    received += chunk.length
+    report(received, expected, 'downloading')
+  }
+  if (received < 20_000) throw new Error('Файл получился слишком маленьким')
+  return { bytes: received, total: Math.max(expected, received) }
+}
+
 /** Удаляет локальную копию трека. */
 export async function remove(id: string): Promise<boolean> {
   await init()
@@ -183,7 +264,7 @@ export async function save(
   if (existing) return existing
   await ensureDir()
 
-  const ext = extensionFor(stream.mime)
+  const ext = stream.hls ? 'm4a' : extensionFor(stream.mime)
   const hash = createHash('sha1').update(track.id).digest('hex').slice(0, 20)
   let file = `${hash}.${ext}`
   let target = path.join(rootDir(), file)
@@ -230,7 +311,16 @@ export async function save(
   let received = 0
   let total = 0
   try {
-    if (stream.videoId) {
+    if (stream.hls) {
+      const got = await downloadHls(stream.url, tmp, stream.bitrateKbps, (bytes, size, status) => {
+        received = bytes
+        total = size
+        report(bytes, size, status)
+      })
+      received = got.bytes
+      total = got.total
+      await fsp.rename(tmp, target)
+    } else if (stream.videoId) {
       // YouTube отдаёт одиночное соединение очень медленно — качаем через yt-dlp
       // кусками, а если он недоступен, откатываемся на прямую ссылку
       try {
@@ -268,7 +358,12 @@ export async function save(
       bytes: received,
       bitrateKbps: stream.bitrateKbps,
       savedAt: Date.now(),
-      source: stream.source === 'yandex' ? 'yandex' : 'youtube'
+      source:
+        stream.source === 'yandex'
+          ? 'yandex'
+          : stream.source === 'soundcloud'
+            ? 'soundcloud'
+            : 'youtube'
     }
     entries.set(track.id, entry)
     await writeIndex()

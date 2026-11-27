@@ -11,6 +11,7 @@
  */
 import type { ResolvedStream, Track } from '../types'
 import { EQ_BANDS, clampEq, DEFAULT_EQ, type EqSettings } from './eq'
+import Hls from 'hls.js'
 
 /** off — не повторять; all — очередь по кругу; one — текущий трек */
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -46,7 +47,7 @@ export interface EngineHandlers {
     main: string | null
   ): void
   /** откуда реально играет трек — для значка в плеере */
-  onSource(source: 'yandex' | 'youtube' | 'local' | null, fallback: boolean): void
+  onSource(source: 'yandex' | 'youtube' | 'local' | 'soundcloud' | null, fallback: boolean): void
 }
 
 export interface EngineOptions {
@@ -95,6 +96,7 @@ export class AudioEngine {
   private ctx: AudioContext | null = null
   private els: HTMLAudioElement[] = []
   private gains: GainNode[] = []
+  private hls: (Hls | null)[] = [null, null]
   private master: GainNode | null = null
   private analyser: AnalyserNode | null = null
   /** измерительный вход нормализации: до EQ и до лимитера */
@@ -302,6 +304,45 @@ export class AudioEngine {
     this.opts = { ...this.opts, ...patch }
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(this.opts.volume * dbToGain(this.normDb), this.ctx.currentTime, 0.05)
+    }
+  }
+
+  /**
+   * HLS приходит с SoundCloud: Chromium не умеет m3u8 в <audio>, поэтому
+   * для таких потоков подключаем hls.js к тому же медиаэлементу.
+   */
+  private loadInto(el: HTMLAudioElement, slot: number, stream: ResolvedStream): void {
+    this.destroyHls(slot)
+    if (stream.hls || /\.m3u8(\?|$)/i.test(stream.url)) {
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          backBufferLength: 90,
+          maxBufferLength: 30
+        })
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            window.undertow.log('hls fatal', { type: data.type, details: data.details })
+          }
+        })
+        this.hls[slot] = hls
+        hls.loadSource(stream.url)
+        hls.attachMedia(el)
+        return
+      }
+    }
+    el.src = stream.url
+    el.load()
+  }
+
+  private destroyHls(slot: number): void {
+    const hls = this.hls[slot]
+    if (!hls) return
+    this.hls[slot] = null
+    try {
+      hls.destroy()
+    } catch {
+      /* уже уничтожен */
     }
   }
 
@@ -636,8 +677,7 @@ export class AudioEngine {
       )
       if (this.destroyed) return
       window.undertow.log('retry ok', { id: track.id, mime: stream.mime })
-      el.src = stream.url
-      el.load()
+      this.loadInto(el, this.active, stream)
       this.loadedId[this.active] = track.id
       this.loadedInfo[this.active] = stream
       this.armLoadTimer(track)
@@ -648,7 +688,9 @@ export class AudioEngine {
             ? 'youtube'
             : track.provider === 'yandex'
               ? 'yandex'
-              : 'youtube'),
+              : track.provider === 'soundcloud'
+                ? 'soundcloud'
+                : 'youtube'),
         Boolean(stream.fallback)
       )
       el.currentTime = 0
@@ -667,6 +709,7 @@ export class AudioEngine {
     this.clearLoadTimer()
     this.stopLoop()
     document.removeEventListener('visibilitychange', this.onVisibility)
+    for (let i = 0; i < this.els.length; i++) this.destroyHls(i)
     for (const el of this.els) {
       el.pause()
       el.removeAttribute('src')
@@ -719,8 +762,7 @@ export class AudioEngine {
         if (this.destroyed) return
         // пока резолвили, трек могли переключить ещё раз
         if (this.queue[this.index]?.id !== track.id) return
-        el.src = stream.url
-        el.load()
+        this.loadInto(el, this.active, stream)
         this.loadedId[this.active] = track.id
         this.loadedInfo[this.active] = stream
       } catch (e) {
@@ -748,12 +790,17 @@ export class AudioEngine {
             ? 'youtube'
             : track.provider === 'yandex'
               ? 'yandex'
-              : 'youtube'),
+              : track.provider === 'soundcloud'
+                ? 'soundcloud'
+                : 'youtube'),
         Boolean(info.fallback)
       )
       this.emitCopy(track)
     } else {
-      this.handlers.onSource(track.provider === 'yandex' ? 'yandex' : 'youtube', false)
+      this.handlers.onSource(
+        track.provider === 'yandex' ? 'yandex' : track.provider === 'soundcloud' ? 'soundcloud' : 'youtube',
+        false
+      )
     }
 
     if (autoplay) {
@@ -825,8 +872,7 @@ export class AudioEngine {
       )
       if (this.destroyed || this.queue[this.index]?.id !== track.id) return
       window.undertow.log('retry ok', { id: track.id, mime: stream.mime })
-      el.src = stream.url
-      el.load()
+      this.loadInto(el, this.active, stream)
       this.loadedId[this.active] = track.id
       this.loadedInfo[this.active] = stream
       this.emitQuality(stream.mime, stream.bitrateKbps)
@@ -929,8 +975,7 @@ export class AudioEngine {
       const stream = await window.undertow.resolve(next.id, false, next)
       if (this.destroyed || token !== this.preloadToken) return
       if (this.loadedId[slot] === next.id) return
-      el.src = stream.url
-      el.load()
+      this.loadInto(el, slot, stream)
       this.loadedId[slot] = next.id
       this.loadedInfo[slot] = stream
     } catch {
@@ -989,6 +1034,7 @@ export class AudioEngine {
     const el = this.els[i]
     if (!el) return
     el.pause()
+    this.destroyHls(i)
     el.removeAttribute('src')
     el.load()
     this.loadedId[i] = null
@@ -996,7 +1042,13 @@ export class AudioEngine {
   }
 
   private emitQuality(mime: string, bitrateKbps?: number): void {
-    const codec = mime.includes('webm') ? 'OPUS' : mime.includes('mp4') ? 'AAC' : mime.includes('flac') ? 'FLAC' : 'MP3'
+    const codec = mime.includes('webm')
+      ? 'OPUS'
+      : mime.includes('mpegurl') || mime.includes('mp4')
+        ? 'AAC'
+        : mime.includes('flac')
+          ? 'FLAC'
+          : 'MP3'
     // источник рядом отдельным значком YM/YT — дублировать его в чипе незачем
     const label = bitrateKbps ? `${codec} ${bitrateKbps}` : codec
     if (label !== this.lastQuality) {

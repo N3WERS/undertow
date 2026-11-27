@@ -1,6 +1,6 @@
 export interface Track {
   id: string
-  provider: 'youtube' | 'yandex'
+  provider: 'youtube' | 'yandex' | 'soundcloud'
   title: string
   artist: string
   /** id исполнителя в провайдере (если известен) — чтобы открыть его страницу */
@@ -17,6 +17,14 @@ export interface Track {
   kind: 'song' | 'video' | 'album' | 'playlist' | 'artist'
   subtitle?: string
   playable: boolean
+  /** официальный каталожный трек или загрузка с канала исполнителя */
+  official?: boolean
+  /** результат каталога YouTube Music (а не обычной выдачи YouTube) */
+  catalog?: boolean
+  /** исходный порядок результата в каталоге YouTube Music */
+  catalogRank?: number
+  /** обычная загрузка с верифицированного канала */
+  verified?: boolean
 }
 
 export interface BrowsePage {
@@ -57,7 +65,7 @@ export interface ResolvedStream {
   bitrateKbps?: number
   ttlMs: number
   /** откуда реально пришёл звук (может отличаться от provider трека) */
-  source?: 'yandex' | 'youtube' | 'local'
+  source?: 'yandex' | 'youtube' | 'local' | 'soundcloud'
   fallback?: boolean
   fallbackTitle?: string
   fallbackMatched?: { title: string; artist: string }
@@ -69,6 +77,7 @@ export interface ResolvedStream {
   variantVideoId?: string
   /** id YouTube-видео, если звук пришёл с YouTube */
   videoId?: string
+  hls?: boolean
 }
 
 export type UpdateStatus =
@@ -151,7 +160,7 @@ export interface OfflineEntry {
   bytes: number
   bitrateKbps?: number
   savedAt: number
-  source: 'yandex' | 'youtube'
+  source: 'yandex' | 'youtube' | 'soundcloud'
 }
 
 export interface OfflineSnapshot {
@@ -273,7 +282,7 @@ export interface PlayerReport {
   playing: boolean
   title: string | null
   artist: string | null
-  source: 'yandex' | 'youtube' | 'local' | null
+  source: 'yandex' | 'youtube' | 'local' | 'soundcloud' | null
 }
 
 export interface FlowOptions {
@@ -375,9 +384,9 @@ export interface UndertowApi {
   fallbackUnpin(track: Track): Promise<void>
   fallbackPick(track: Track, candidate: FallbackCandidate): Promise<void>
   prewarm(track: Track): Promise<void>
-  search(query: string): Promise<Track[]>
   searchAll(query: string): Promise<SearchAll>
   searchYoutube(query: string, limit?: number): Promise<Track[]>
+  soundcloudSearch(query: string, limit?: number, offset?: number): Promise<Track[]>
   searchMore(query: string, offset: number, limit?: number): Promise<Track[]>
   resolve(trackId: string, fresh?: boolean, meta?: Track): Promise<ResolvedStream>
   state(): Promise<ProviderState>

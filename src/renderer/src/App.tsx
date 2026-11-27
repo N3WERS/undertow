@@ -84,7 +84,7 @@ export default function App() {
   const [snap, setSnap] = useState<Snapshot>(EMPTY_SNAP)
   const [track, setTrack] = useState<Track | null>(null)
   const [quality, setQuality] = useState<string | null>(null)
-  const [source, setSource] = useState<'yandex' | 'youtube' | 'local' | null>(null)
+  const [source, setSource] = useState<'yandex' | 'youtube' | 'local' | 'soundcloud' | null>(null)
   const [versions, setVersions] = useState<{ loading: boolean; list: TrackVersion[] } | null>(null)
   /** исходный трек, от которого ищем версии: переживает переключение на версию */
   const versionBaseRef = useRef<Track | null>(null)

@@ -137,6 +137,17 @@ function parseDuration(v: unknown): number | null {
 
 const PLAYABLE = new Set(['song', 'video'])
 
+/** Пользовательские переделки: даже на верифицированном канале это не «оригинал». */
+export const DERIVATIVE_TITLE =
+  /(slowed|reverb|nightcore|sped\s*up|speed\s*up|8d|cover|karaoke|instrumental|lyrics?|mashup|bootleg|remix|ремикс|кавер|караоке|замедлен|ускорен|реверб|реакц|смотрит|обзор|разбор|подкаст|интервью|react)/i
+
+function looksOfficial(title: string, channel: string, verified: boolean): boolean {
+  if (DERIVATIVE_TITLE.test(`${title} ${channel}`)) return false
+  const name = channel.trim().toLowerCase()
+  if (verified) return true
+  return /-\s*topic$/.test(name) || /vevo$/.test(name)
+}
+
 type ParserItem = Record<string, unknown>
 
 function toTrack(item: ParserItem): Track | null {
@@ -300,7 +311,11 @@ function looksLikeChannel(id: string): boolean {
 
 /** Поиск. yt-dlp отдаёт аккуратные длительность/канал без лишних запросов. */
 export async function search(query: string, limit = 24): Promise<Track[]> {
-  const entries = await ytSearch(query, limit)
+  // Фильмы и многочасовые стримы — не музыка: в поиске треков им не место.
+  const raw = await ytSearch(query, Math.min(40, limit + 8))
+  const entries = raw
+    .filter((e) => !e.isLive && (e.duration == null || e.duration <= 20 * 60))
+    .slice(0, limit)
   return entries.map((e) => ({
     id: `yt:${e.id}`,
     provider: 'youtube' as const,
@@ -309,7 +324,9 @@ export async function search(query: string, limit = 24): Promise<Track[]> {
     durationSec: e.duration,
     coverUrl: e.thumbnail ?? undefined,
     kind: 'song' as const,
-    playable: !e.isLive && !looksLikeChannel(e.id)
+    playable: !e.isLive && !looksLikeChannel(e.id),
+    verified: e.verified,
+    official: looksOfficial(e.title, e.uploader, e.verified)
   }))
 }
 
@@ -574,7 +591,7 @@ export interface TopChart {
  * Подписи плейлиста часто содержат «Artist - Song (Official Video)», поэтому
  * перед показом приводим их к виду «исполнитель / название».
  */
-const CHART_LABEL = /records|recordings|music|sound|media|studio|production|entertainment|tv|müzik|label/i
+const CHART_LABEL = /records|recordings|music|sound|media|studio|production|entertainment|\btv\b|müzik|label/i
 
 function tidyChartTrack(track: Track, item: ParserItem): Track {
   let title = track.title.trim()
@@ -822,7 +839,7 @@ export function albumRefOf(item: ParserItem): YmAlbumRef | null {
   const sub = text(item.subtitle).toLowerCase()
   const type = /singl|сингл/.test(sub)
     ? 'single'
-    : /ep|мини-альбом/.test(sub)
+    : /\bep\b|мини-альбом/.test(sub)
       ? 'ep'
       : /album|альбом/.test(sub)
         ? 'album'

@@ -15,6 +15,7 @@ import { getYandexToken, setYandexToken } from '../store'
 import { ytdlpInfo } from '../ytdlp'
 import * as youtube from './youtube'
 import * as yandex from './yandex'
+import * as soundcloud from './soundcloud'
 import * as recommend from '../recommend'
 import * as recPrefs from '../recPrefs'
 import * as radio from '../radio'
@@ -496,6 +497,17 @@ export async function searchYoutube(query: string, limit = 20): Promise<Track[]>
   return youtube.search(term, Math.max(1, Math.min(40, Math.floor(limit) || 20)))
 }
 
+/** SoundCloud ищем отдельно: каталог не пересекается с YouTube Music. */
+export async function soundcloudSearch(query: string, limit = 20, offset = 0): Promise<Track[]> {
+  const term = String(query ?? '').trim()
+  if (!term) return []
+  return soundcloud.search(
+    term,
+    Math.max(1, Math.min(40, Math.floor(limit) || 20)),
+    Math.max(0, Math.floor(offset) || 0)
+  )
+}
+
 /** Догрузка следующей порции поиска: те же треки, но глубже выдачи. */
 export async function searchMore(query: string, offset: number, limit = 20): Promise<Track[]> {
   const term = String(query ?? '').trim()
@@ -506,6 +518,8 @@ export async function searchMore(query: string, offset: number, limit = 20): Pro
   return all.slice(start, start + size)
 }
 
+
+
 export async function searchAll(query: string): Promise<SearchAll> {
   const term = String(query ?? '').trim()
   if (!term) return { tracks: [], albums: [], artists: [], playlists: [] }
@@ -514,7 +528,12 @@ export async function searchAll(query: string): Promise<SearchAll> {
   const music = await youtube
     .musicSearchAll(term)
     .catch(() => ({ tracks: [] as Track[], albums: [], artists: [], playlists: [] }))
-  let tracks = music.tracks
+  let tracks: Track[] = music.tracks.map((t, index) => ({
+    ...t,
+    catalog: true,
+    catalogRank: index,
+    official: !youtube.DERIVATIVE_TITLE.test(`${t.title} ${t.artist}`)
+  }))
   if (!tracks.length) {
     tracks = await youtube.search(term, 20).catch(() => [] as Track[])
   }
@@ -624,21 +643,6 @@ export function clearHiddenSections(): string[] {
 
 /* --------------------------------- поиск --------------------------------- */
 
-export async function search(query: string): Promise<Track[]> {
-  await ensureYandexChecked()
-  if (yandexReady()) {
-    try {
-      const ym = await yandex.search(getYandexToken() as string, query)
-      if (ym.length) {
-        const yt = await youtube.search(query, 12).catch(() => [] as Track[])
-        return [...ym, ...yt]
-      }
-    } catch (e) {
-      yandexError = e instanceof Error ? e.message : String(e)
-    }
-  }
-  return youtube.search(query, 24)
-}
 
 /* ------------------------ страницы артиста/альбома ----------------------- */
 
@@ -792,6 +796,7 @@ export async function resolveStream(trackId: string, fresh = false, meta?: Track
     const { filePath, ...rest } = local
     return { ...rest, url: proxifyLocal(filePath, local.mime) }
   }
+  if (trackId.startsWith('sc:')) return soundcloud.resolve(trackId, fresh)
   // fresh означает «дай другую ссылку»: без сброса кэша повторный resolve
   // вернул бы тот же самый недоступный rr-хост.
   if (fresh && trackId.startsWith('yt:')) youtube.dropStreamCache(trackId)

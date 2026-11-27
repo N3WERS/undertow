@@ -50,10 +50,12 @@ export function registerIpc(): void {
   )
   // пересобрать личные подборки, минуя кэш
   ipcMain.handle('home:refresh', async () => providers.home(true))
-  ipcMain.handle('search', async (_e, query: string) => providers.search(String(query ?? '')))
   ipcMain.handle('search:all', async (_e, query: string) => providers.searchAll(String(query ?? '')))
   ipcMain.handle('search:youtube', async (_e, query: string, limit?: number) =>
     providers.searchYoutube(String(query ?? ''), Number(limit) || 20)
+  )
+  ipcMain.handle('search:soundcloud', async (_e, query: string, limit?: number, offset?: number) =>
+    providers.soundcloudSearch(String(query ?? ''), Number(limit) || 20, Number(offset) || 0)
   )
   ipcMain.handle('search:more', async (_e, query: string, offset: number, limit?: number) =>
     providers.searchMore(String(query ?? ''), Number(offset) || 0, Number(limit) || 20)

@@ -20,7 +20,7 @@ interface PlayerReport {
   playing: boolean
   title: string | null
   artist: string | null
-  source: 'yandex' | 'youtube' | 'local' | null
+  source: 'yandex' | 'youtube' | 'local' | 'soundcloud' | null
 }
 
 let win: BrowserWindow | null = null

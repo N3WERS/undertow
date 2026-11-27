@@ -32,7 +32,7 @@ interface Props {
   duration: number
   volume: number
   quality: string | null
-  source: 'yandex' | 'youtube' | 'local' | null
+  source: 'yandex' | 'youtube' | 'local' | 'soundcloud' | null
   copyLabel: string | null
   versions: { loading: boolean; list: TrackVersion[] } | null
   onVersions: () => void
@@ -74,6 +74,7 @@ interface Props {
 function sourceShort(source: Props['source']): string {
   if (source === 'yandex') return 'YM'
   if (source === 'local') return 'LOCAL'
+  if (source === 'soundcloud') return 'SC'
   return 'YT'
 }
 

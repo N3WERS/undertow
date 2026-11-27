@@ -54,10 +54,11 @@ const api = {
   artistRadio: (ref: { id?: string; name?: string }) => ipcRenderer.invoke('radio:artist', ref),
   radioMore: (ref: { id?: string; name?: string }) => ipcRenderer.invoke('radio:more', ref),
   radioTrack: (track: unknown) => ipcRenderer.invoke('radio:track', track),
-  search: (query: string) => ipcRenderer.invoke('search', query),
   searchAll: (query: string) => ipcRenderer.invoke('search:all', query),
   searchYoutube: (query: string, limit = 20) =>
     ipcRenderer.invoke('search:youtube', query, limit),
+  soundcloudSearch: (query: string, limit = 20, offset = 0) =>
+    ipcRenderer.invoke('search:soundcloud', query, limit, offset),
   searchMore: (query: string, offset: number, limit = 20) =>
     ipcRenderer.invoke('search:more', query, offset, limit),
   resolve: (trackId: string, fresh = false, meta?: unknown) => ipcRenderer.invoke('resolve', trackId, fresh, meta),

@@ -29,7 +29,7 @@ interface Props {
   resolving: boolean
   duration: number
   volume: number
-  source: 'yandex' | 'youtube' | 'local' | null
+  source: 'yandex' | 'youtube' | 'local' | 'soundcloud' | null
   quality: string | null
   queue: Track[]
   queueIndex: number
@@ -49,7 +49,7 @@ interface Props {
 }
 
 const sourceLabel = (source: Props['source']): string =>
-  source === 'yandex' ? 'YM' : source === 'local' ? 'LOCAL' : 'YT'
+  source === 'yandex' ? 'YM' : source === 'local' ? 'LOCAL' : source === 'soundcloud' ? 'SC' : 'YT'
 
 export default function MiniPlayer({
   track,
