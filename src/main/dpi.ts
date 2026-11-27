@@ -381,7 +381,7 @@ ${argsPs}
 `
 }
 
-function startElevatedSupervisor(found: Install): Promise<void> {
+function startElevatedSupervisor(): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = scriptPath()
     const command =
@@ -539,7 +539,7 @@ export async function setEnabled(on: boolean): Promise<DpiStatus> {
       writeFileSync(scriptPath(), String.fromCharCode(0xfeff) + supervisorScript(found, process.pid), 'utf8')
       rmSync(stopPath(), { force: true })
       rmSync(resultPath(), { force: true })
-      await startElevatedSupervisor(found)
+      await startElevatedSupervisor()
       const result = await waitForResult(60000)
       if (!result) {
         writeFileSync(stopPath(), 'timeout', 'utf8')

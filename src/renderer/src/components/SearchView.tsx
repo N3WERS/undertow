@@ -153,8 +153,6 @@ function titleMatchesQuery(track: Track, query: string): boolean {
   return effective.every((token) => hay.includes(token))
 }
 
-const SUGGESTIONS = ['Molchat Doma', 'Tame Impala', 'новинки 2026', 'phonk', 'Radiohead', 'Кино']
-
 const TYPE_LABEL: Record<string, string> = { single: 'сингл', ep: 'EP', album: 'альбом' }
 const HISTORY_KEY = 'undertow.searchHistory'
 
@@ -493,24 +491,6 @@ export default function SearchView({
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {!asked && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              className="play-btn ghost"
-              style={{ height: 32, padding: '0 14px', fontSize: 12.5 }}
-              onClick={() => {
-                setQuery(s)
-                void run(s)
-              }}
-            >
-              {s}
-            </button>
-          ))}
         </div>
       )}
 

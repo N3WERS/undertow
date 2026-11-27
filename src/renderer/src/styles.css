@@ -3672,12 +3672,6 @@ img {
   color: var(--accent);
 }
 
-.flow-note {
-  font-size: 11px;
-  color: var(--text-mute);
-  max-width: 720px;
-  line-height: 1.5;
-}
 
 /* ======================== изюминки: плеер и страницы ===================== */
 
@@ -8706,28 +8700,6 @@ img {
   margin-top: 16px;
 }
 
-.flow-genre-search {
-  width: 170px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
-  font: inherit;
-  font-size: 10.5px;
-  outline: none;
-}
-
-.flow-genre-search:focus {
-  border-color: rgba(55, 214, 207, 0.4);
-  background: rgba(55, 214, 207, 0.04);
-}
-
-.flow-genre-search::placeholder {
-  color: var(--text-mute);
-}
-
 .flow-genre-mode {
   display: inline-flex;
   padding: 2px;
@@ -8763,34 +8735,9 @@ img {
   color: rgba(255, 160, 160, 0.7);
 }
 
-.flow-genre-empty {
-  color: var(--text-mute);
-  font-size: 10.5px;
-  padding: 6px 2px;
-}
-
 .flow-novelty {
   max-width: 620px;
   margin-top: 16px;
-}
-
-.flow-novelty-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  color: var(--text-mute);
-  font-size: 9.5px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-.flow-novelty-head b {
-  color: var(--text);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 .flow-novelty input[type='range'] {
@@ -8807,29 +8754,6 @@ img {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.flow-session-stats {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
-  padding: 1px 4px 0;
-  color: var(--text-mute);
-  font-size: 10.5px;
-}
-
-.flow-session-stats span {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.flow-session-stats b {
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 560;
 }
 
 .flow-why {
@@ -9095,12 +9019,6 @@ img {
   cursor: pointer;
 }
 
-@media (max-width: 1180px) {
-  .flow-session-stats {
-    gap: 6px 11px;
-  }
-}
-
 .flow-selected-genres {
   padding: 5px 9px;
   border: 1px solid var(--line);
@@ -9333,66 +9251,6 @@ img {
   background: transparent;
 }
 
-/* 4. статистика как журнал путешествия */
-.flow-log.flow-session-stats {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  width: 100%;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background:
-    linear-gradient(90deg, rgba(55, 214, 207, 0.055), rgba(141, 124, 246, 0.035) 70%, transparent),
-    rgba(255, 255, 255, 0.015);
-  overflow: hidden;
-}
-
-.flow-log > span {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 9px 15px;
-  color: var(--text-mute);
-  font-size: 10px;
-  border-left: 1px solid var(--line);
-}
-
-.flow-log > span:first-child {
-  border-left: 0;
-}
-
-.flow-log b {
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.flow-log .flow-log-lead {
-  align-items: baseline;
-  gap: 7px;
-  padding-left: 16px;
-  padding-right: 19px;
-}
-
-.flow-log-lead b {
-  background: linear-gradient(100deg, #7ceee6, #a99bff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-size: 23px;
-  font-weight: 680;
-  line-height: 1;
-}
-
-.flow-log-lead i {
-  color: var(--text-dim);
-  font-style: normal;
-  font-size: 10px;
-  letter-spacing: 0.01em;
-}
-
 /* 5. семена как лента источников с кольцом веса */
 .seed-river {
   display: flex;
@@ -9579,26 +9437,6 @@ img {
     0 0 38px rgba(55, 214, 207, 0.035);
 }
 
-.flow-log .flow-log-state {
-  margin-left: auto;
-  align-items: center;
-  gap: 6px;
-  padding-right: 16px;
-  color: var(--accent);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.82;
-}
-
-.flow-log-state i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 8px rgba(55, 214, 207, 0.6);
-}
-
 /* линия таймлайна остаётся видимой до последнего трека */
 .flow-timeline::before {
   left: 5px;
@@ -9750,4 +9588,752 @@ img {
   color: #a99bff;
   border-color: rgba(141, 124, 246, 0.34);
   background: rgba(141, 124, 246, 0.1);
+}
+
+/* ==================== Течение: понятная настройка и первый запуск ========= */
+
+.flow-actions-main {
+  margin-top: 20px;
+  gap: 10px;
+}
+
+.flow-actions-main .flow-main-play {
+  height: 38px;
+  padding: 0 17px;
+  font-size: 12.5px;
+}
+
+.flow-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.flow-secondary:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(55, 214, 207, 0.38);
+  background: rgba(55, 214, 207, 0.06);
+}
+
+.flow-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* пустое состояние: объясняем, что произойдёт после запуска */
+.flow-idle {
+  display: block;
+  padding: 20px;
+}
+
+.flow-idle-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.flow-idle-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.flow-idle-steps span {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--text-mute);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.flow-idle-steps i {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: rgba(55, 214, 207, 0.12);
+  color: var(--accent);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+/* настройки вынесены из шапки: видно, на что они влияют */
+.flow-setup {
+  padding: 18px 20px 20px;
+  margin-bottom: 26px;
+}
+
+.flow-setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.flow-setup-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+
+.flow-setup-head p {
+  margin: 4px 0 0;
+  color: var(--text-mute);
+  font-size: 11px;
+}
+
+.flow-setup-saved {
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-mute);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+.flow-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(220px, 0.8fr);
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.flow-setup-block {
+  min-width: 0;
+  padding: 13px 14px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.flow-setup-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flow-setup-title b {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.flow-setup-title span {
+  color: var(--accent);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-setup-hint {
+  margin: 7px 0 0;
+  color: var(--text-mute);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.flow-setup .flow-genre-tools {
+  margin-top: 10px;
+}
+
+.flow-setup .flow-genres {
+  margin-top: 10px;
+}
+
+.flow-setup .flow-selected-genres {
+  display: inline-block;
+  margin-top: 9px;
+}
+
+.flow-setup-novelty input[type='range'] {
+  width: 100%;
+  margin: 12px 0 0;
+  accent-color: var(--flow-violet);
+  cursor: pointer;
+}
+
+.flow-novelty-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 3px;
+  color: var(--text-mute);
+  font-size: 9px;
+}
+
+/* текущий трек: объясняем маршрут и кнопки обратной связи */
+.flow-route-label {
+  display: block;
+  width: 100%;
+  margin-bottom: 1px;
+  color: var(--text-mute);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.flow-feedback-head {
+  margin-top: 14px;
+  margin-bottom: 5px;
+  color: var(--text-mute);
+  font-size: 8.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.flow-feedback {
+  margin-top: 0;
+}
+
+/* пояснение к артистам */
+.flow-seed-help {
+  max-width: 680px;
+  margin: -1px 0 11px;
+  color: var(--text-mute);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.flow-seed-help b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 1000px) {
+  .flow-setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-idle-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+.flow-hero-quick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+  color: var(--text-mute);
+  font-size: 10.5px;
+}
+
+.flow-hero-quick button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 10.5px;
+  text-decoration: underline;
+  text-decoration-color: rgba(55, 214, 207, 0.35);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.flow-hero-quick button:hover {
+  color: #8ff5ed;
+}
+
+.flow-apply-note {
+  margin: 6px 0 0;
+  color: rgba(255, 193, 120, 0.82);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.flow-feedback-head span {
+  margin-left: 4px;
+  color: rgba(255, 255, 255, 0.28);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.flow-feedback-note {
+  margin: 7px 0 0;
+  color: var(--text-mute);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+/* ==================== Течение: компактные карточки и читаемый текст ===== */
+
+.flow-live-block {
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.flow-now {
+  padding: 14px;
+}
+
+.flow-now-cover {
+  max-width: 210px;
+  border-radius: 13px;
+}
+
+.flow-now-meta {
+  margin-top: 12px;
+}
+
+.flow-now-title {
+  font-size: 19px;
+}
+
+.flow-now-toggle {
+  width: 38px;
+  height: 38px;
+  margin-top: 12px;
+}
+
+.flow-next {
+  padding: 12px 14px 8px;
+}
+
+.flow-next-row {
+  padding: 5px 7px;
+}
+
+/* Пояснения: крупнее и светлее, чтобы читались без напряжения */
+.flow-lead,
+.flow-setup-head p,
+.flow-setup-hint,
+.flow-hero-hint,
+.flow-seed-help,
+.flow-note,
+.flow-feedback-note,
+.flow-novelty-scale,
+.flow-idle-steps span {
+  color: #91a4b9;
+}
+
+.flow-lead {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.flow-hero-hint {
+  font-size: 11.5px;
+}
+
+.flow-hero-quick,
+.flow-hero-quick button {
+  font-size: 11.5px;
+}
+
+.flow-setup-head p {
+  font-size: 12px;
+}
+
+.flow-setup-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.flow-setup-title b {
+  font-size: 13px;
+}
+
+.flow-setup-title span {
+  font-size: 10.5px;
+}
+
+.flow-novelty-scale {
+  font-size: 10px;
+}
+
+.flow-seed-help {
+  font-size: 11.5px;
+}
+
+.flow-idle-steps span {
+  font-size: 11px;
+}
+
+.flow-feedback-head {
+  font-size: 9.5px;
+}
+
+.flow-feedback button {
+  font-size: 10px;
+}
+
+.flow-feedback-note {
+  font-size: 10.5px;
+}
+
+.flow-why {
+  font-size: 10.5px;
+  color: #91a4b9;
+}
+
+.flow-route-label {
+  font-size: 9px;
+}
+
+.flow-facts span {
+  font-size: 10.5px;
+  color: #91a4b9;
+}
+
+.flow-note {
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+@media (max-width: 1180px) {
+  .flow-live-block {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+
+  .flow-now-cover {
+    max-width: 190px;
+  }
+}
+
+.flow-now-cover {
+  max-width: 170px;
+}
+
+.flow-now-meta {
+  margin-top: 10px;
+}
+
+.flow-now-toggle {
+  margin-top: 10px;
+}
+
+.flow-feedback-head {
+  margin-top: 10px;
+  color: #91a4b9;
+}
+
+.flow-feedback-head span {
+  color: #91a4b9;
+  font-size: 9px;
+}
+
+.flow-route-label {
+  color: #91a4b9;
+}
+
+.flow-idle p {
+  color: #91a4b9;
+  font-size: 12.5px;
+}
+
+.flow-idle b {
+  font-size: 14px;
+}
+
+.flow-setup-saved {
+  color: #91a4b9;
+  font-size: 9.5px;
+}
+
+@media (max-width: 1180px) {
+  .flow-now-cover {
+    max-width: 160px;
+  }
+}
+
+/* Пояснения в «Течении» — ещё немного светлее */
+.flow-lead,
+.flow-setup-head p,
+.flow-setup-hint,
+.flow-hero-hint,
+.flow-hero-quick,
+.flow-hero-quick button,
+.flow-seed-help,
+.flow-note,
+.flow-feedback-note,
+.flow-novelty-scale,
+.flow-idle-steps span,
+.flow-idle p,
+.flow-setup-saved,
+.flow-feedback-head,
+.flow-feedback-head span,
+.flow-route-label,
+.flow-facts span {
+  color: #a6b8cb;
+}
+
+.flow-feedback button {
+  color: #a6b8cb;
+}
+
+.flow-feedback-note {
+  font-size: 11px;
+}
+
+/* Сейчас играет: шире, чтобы play стоял в одной строке с последней подписью */
+.flow-live-block {
+  grid-template-columns: 440px minmax(0, 1fr);
+}
+
+.flow-now-bottom {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.flow-now-bottom .flow-feedback-note {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.flow-now-bottom .flow-now-toggle {
+  margin-top: 0;
+  flex: none;
+}
+
+/* «Дальше»: снова 8 треков, карточка подстраивается по высоте */
+.flow-next {
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .flow-live-block {
+    grid-template-columns: 380px minmax(0, 1fr);
+  }
+}
+
+/* Сейчас играет: обложка слева, текст и управление справа */
+.flow-live-block {
+  grid-template-columns: 480px minmax(0, 1fr);
+}
+
+.flow-now {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  column-gap: 14px;
+  align-items: start;
+}
+
+.flow-now-cover {
+  grid-column: 1;
+  grid-row: 1;
+  width: 170px;
+  max-width: 170px;
+  align-self: start;
+}
+
+.flow-now-meta {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: 0;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .flow-live-block {
+    grid-template-columns: 380px minmax(0, 1fr);
+  }
+
+  .flow-now {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .flow-now-cover {
+    width: auto;
+    max-width: 150px;
+    align-self: center;
+  }
+
+  .flow-now-meta {
+    margin-top: 10px;
+  }
+}
+
+.flow-live-block {
+  grid-template-columns: 510px minmax(0, 1fr);
+}
+
+/* Управление потоком — отдельной строкой под обложкой и треком */
+.flow-live-block {
+  align-items: stretch;
+  grid-template-columns: 510px minmax(0, 1fr);
+}
+
+.flow-now,
+.flow-next {
+  height: 100%;
+}
+
+.flow-now {
+  grid-template-columns: 170px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  align-content: start;
+}
+
+.flow-now-cover {
+  grid-column: 1;
+  grid-row: 1;
+  width: 170px;
+  max-width: 170px;
+  align-self: start;
+}
+
+.flow-now-meta {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: 0;
+}
+
+.flow-now-controls {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  align-self: end;
+  margin-top: 12px;
+}
+
+.flow-now-controls .flow-feedback-head {
+  margin-top: 0;
+}
+
+/* Выравниваем высоту карточек и убираем провал в левой */
+.flow-live-block {
+  align-items: stretch;
+}
+
+.flow-now-cover {
+  width: 210px;
+  max-width: 210px;
+}
+
+.flow-now-controls {
+  align-self: start;
+  margin-top: 14px;
+}
+
+.flow-now-meta .flow-why {
+  margin-top: 14px;
+}
+
+.flow-next-row {
+  padding: 3px 7px;
+}
+
+.flow-next-row img,
+.flow-next-img {
+  width: 34px;
+  height: 34px;
+}
+
+@media (max-width: 1180px) {
+  .flow-now,
+  .flow-next {
+    height: auto;
+  }
+
+  .flow-now-cover {
+    width: auto;
+    max-width: 170px;
+  }
+}
+
+.flow-next-row.flow-stop {
+  padding: 3px 7px;
+}
+
+.flow-now {
+  grid-template-columns: 210px minmax(0, 1fr);
+}
+
+/* Шапка «Течения» — компактнее, без лишнего пустого места */
+.flow-hero {
+  min-height: 0;
+  padding: 26px 36px 24px;
+}
+
+/* Обе карточки должны жить на одной поверхности: без отдельного свечения */
+.flow-now-glow {
+  display: none;
+}
+
+.flow-page.live .flow-now {
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+}
+
+/* Статистика потока — внутри шапки «Течения» */
+.flow-hero-stats {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 0;
+  max-width: 780px;
+  margin-top: 16px;
+}
+
+.flow-hero-stats > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.flow-hero-stats > span:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.flow-hero-stats b {
+  color: #eafdfb;
+  font-size: 16px;
+  font-weight: 620;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-hero-stats i {
+  color: #91a4b9;
+  font-style: normal;
+  font-size: 10px;
+}
+
+
+@media (max-width: 1180px) {
+  .flow-hero-stats {
+    max-width: 100%;
+  }
+
+  .flow-hero-stats > span {
+    padding: 0 10px;
+  }
+
 }

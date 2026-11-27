@@ -302,15 +302,12 @@ export interface FlowRoute {
 export interface FlowStats {
   tracks: number
   seconds: number
-  artists: number
   newArtists: number
-  libraryTracks: number
 }
 
 export interface FlowInfo {
   active: boolean
   seeds: { id?: string; name: string; coverUrl?: string; weight?: number }[]
-  genre?: string
   genres: string[]
   excludeGenres: string[]
   novelty: number

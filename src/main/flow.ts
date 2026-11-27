@@ -17,7 +17,7 @@ import * as genres from './genres'
  */
 
 const SEEDS = 6
-const NEIGHBOURS = 10
+const NEIGHBOURS = 16
 const RING2_PICKS = 6
 const FIRST_FILL = 30
 const REFILL = 20
@@ -38,9 +38,7 @@ export interface FlowRoute {
 export interface FlowStats {
   tracks: number
   seconds: number
-  artists: number
   newArtists: number
-  libraryTracks: number
 }
 
 export interface FlowOptions {
@@ -61,7 +59,6 @@ export interface FlowSeed {
 export interface FlowInfo {
   active: boolean
   seeds: FlowSeed[]
-  genre?: string
   genres: string[]
   excludeGenres: string[]
   novelty: number
@@ -73,12 +70,12 @@ interface Pool {
   id: string
   name: string
   tracks: Track[]
+  /** артист уже есть в библиотеке */
+  known: boolean
 }
 
-type SeedRef = FlowSeed
-
 interface Session {
-  seeds: SeedRef[]
+  seeds: FlowSeed[]
   used: Set<string>
   /** нормализованные названия: один и тот же трек не должен идти дважды */
   keys: Set<string>
@@ -87,11 +84,15 @@ interface Session {
   artists: { id: string; name: string }[]
   known: Set<string>
   libraryIds: Set<string>
+  /** нормализованные имена артистов, которые есть в библиотеке */
+  libraryArtists: Set<string>
   shelf: Track[]
   sinceLibrary: number
-  ring: number
   /** с какого пула начинать круг: порядок артистов не должен повторяться */
   cursor: number
+  /** сколько треков уже взято у знакомых и новых артистов */
+  knownDrawn: number
+  newDrawn: number
   /** выбранные жанры: пусто — «всё» */
   genres: string[]
   /** жанры, которые нужно исключить */
@@ -113,11 +114,9 @@ interface Session {
   /** вес семян для полоски в интерфейсе */
   seedWeights: Map<string, number>
   stats: {
-    startedAt: number
     tracks: number
     seconds: number
     artists: Set<string>
-    libraryTracks: number
     knownArtists: Set<string>
   }
 }
@@ -202,7 +201,8 @@ function poolsFrom(
   used: Set<string>,
   keys: Set<string>,
   routes?: Map<string, FlowRoute>,
-  routeFor?: (p: { id: string; name: string }) => FlowRoute
+  routeFor?: (p: { id: string; name: string }) => FlowRoute,
+  knownArtists?: Set<string>
 ): Pool[] {
   const pools: Pool[] = []
   const seenArtist = new Set<string>()
@@ -219,7 +219,9 @@ function poolsFrom(
       tracks.push(t)
       routes?.set(t.id, route)
     }
-    if (tracks.length) pools.push({ id: p.id, name: p.name, tracks })
+    if (tracks.length) {
+      pools.push({ id: p.id, name: p.name, tracks, known: Boolean(knownArtists?.has(flat(p.name))) })
+    }
   }
   return pools
 }
@@ -235,46 +237,61 @@ function routeTo(s: Session, p: { id: string; name: string }): FlowRoute {
  */
 function draw(s: Session, want: number): Track[] {
   const out: Track[] = []
-  const deferred = new Map<Pool, Track[]>()
   let guard = 0
   while (out.length < want && guard++ < want * 12) {
-    // каждый круг начинаем с другого артиста — иначе последовательность
-    // всегда одна и та же: Big Baby Tape, MACAN, kizaru…
-    const start = s.pools.length ? s.cursor % s.pools.length : 0
-    const order: Pool[] = start ? [...s.pools.slice(start), ...s.pools.slice(0, start)] : s.pools
-    // «Ещё такого»: усиленный артист проходит круг дважды
-    const boost = order.filter((p) => s.boosted.has(flat(p.name)))
-    let advanced = false
-    for (const pool of [...order, ...boost]) {
-      const last = out.length ? artistOf(out[out.length - 1]).toLowerCase() : ''
-      while (pool.tracks.length) {
-        const t = pool.tracks.shift() as Track
-        if (!t.playable || s.used.has(t.id)) continue
-        // тот же артист два раза подряд — отложим его трек на следующий круг
-        if (last && artistOf(t).toLowerCase() === last) {
-          const back = deferred.get(pool) ?? []
-          back.push(t)
-          deferred.set(pool, back)
-          continue
+    // Новизна — это доля новых артистов, а не вероятность вставки
+    // библиотечного трека. Считаем, кого уже больше в этой сессии.
+    const total = s.knownDrawn + s.newDrawn
+    const newShare = Math.max(0, Math.min(1, s.novelty / 100))
+    const preferNew =
+      total === 0 ? Math.random() < newShare : s.newDrawn / total < newShare
+    const categories = preferNew ? [false, true] : [true, false]
+    let picked = false
+
+    for (const known of categories) {
+      const list = s.pools.filter((p) => p.known === known)
+      if (!list.length) continue
+      const start = s.cursor % list.length
+      const ordered = start ? [...list.slice(start), ...list.slice(0, start)] : list
+      // «Ещё такого»: усиленный артист проходит круг дважды
+      const boosted = ordered.filter((p) => s.boosted.has(flat(p.name)))
+
+      for (const pool of [...boosted, ...ordered]) {
+        const last = out.length ? artistOf(out[out.length - 1]).toLowerCase() : ''
+        const deferred: Track[] = []
+        let selected: Track | null = null
+        while (pool.tracks.length) {
+          const t = pool.tracks.shift() as Track
+          if (!t.playable || s.used.has(t.id)) continue
+          // тот же артист два раза подряд — отложим его трек на следующий круг
+          if (last && artistOf(t).toLowerCase() === last) {
+            deferred.push(t)
+            continue
+          }
+          selected = t
+          break
         }
-        s.used.add(t.id)
-        out.push(t)
-        advanced = true
-        break
+        if (deferred.length) pool.tracks.push(...deferred)
+        if (selected) {
+          s.used.add(selected.id)
+          out.push(selected)
+          if (known) s.knownDrawn += 1
+          else s.newDrawn += 1
+          picked = true
+          break
+        }
       }
-      if (out.length >= want) break
+      if (picked) break
     }
-    for (const [pool, list] of deferred) pool.tracks.push(...list)
-    deferred.clear()
+
+    if (!picked) break
     s.cursor++
-    if (!advanced) break
   }
 
-  // «своё» — редко и не рядом с другим своим. Слайдер новизны двигает
-  // вероятность от 1% до 15%: на «знакомом» библиотека звучит чаще.
+  // «своё» — редко и не зависит от новизны: слайдер отвечает за состав
+  // артистов, а не за количество треков из библиотеки.
   s.sinceLibrary += out.length
-  const libraryChance = 0.01 + ((100 - s.novelty) / 100) * 0.14
-  if (s.shelf.length && s.sinceLibrary >= LIBRARY_GAP && Math.random() < libraryChance * out.length) {
+  if (s.shelf.length && s.sinceLibrary >= LIBRARY_GAP && Math.random() < 0.05 * out.length) {
     const pick = s.shelf[Math.floor(Math.random() * s.shelf.length)]
     if (pick && !s.used.has(pick.id)) {
       s.used.add(pick.id)
@@ -322,11 +339,11 @@ async function expand(sessionArg: Session | null = session): Promise<boolean> {
     s.used,
     s.keys,
     s.routes,
-    (p) => routeTo(s, p)
+    (p) => routeTo(s, p),
+    s.libraryArtists
   )
   if (!pools.length) return false
   s.pools.push(...pools)
-  s.ring = 2
   return true
 }
 
@@ -336,7 +353,7 @@ async function expand(sessionArg: Session | null = session): Promise<boolean> {
  */
 export async function start(
   options: FlowOptions = {}
-): Promise<{ title: string; seeds: SeedRef[]; tracks: Track[] }> {
+): Promise<{ title: string; seeds: FlowSeed[]; tracks: Track[] }> {
   const selectedGenres = [...new Set((options.genres ?? []).filter(Boolean))]
   const excludedGenres = [...new Set((options.excludeGenres ?? []).filter(Boolean))]
   const novelty = Math.max(0, Math.min(100, Math.round(options.novelty ?? 55)))
@@ -346,6 +363,9 @@ export async function start(
 
   const lib = snapshot()
   const libraryIds = new Set([...lib.likes, ...lib.history].map((t) => t.id))
+  const libraryArtists = new Set(
+    [...lib.likes, ...lib.history].map((t) => flat(artistOf(t))).filter(Boolean)
+  )
   const excludedKeys = new Set(excludedNames.map(flat))
   const includedKeys = new Set(includeNames.map(flat))
 
@@ -391,19 +411,28 @@ export async function start(
 
   const known = new Set<string>()
   const parents = new Map<string, string>()
-  const neighbours: { id: string; name: string }[] = []
+  const candidates: { id: string; name: string; parent: string }[] = []
+  const seenNeighbour = new Set<string>()
   for (const p of good) {
     known.add(p.id)
     parents.set(p.id, p.name)
     for (const r of p.related) {
       if (!passName(r.name)) continue
-      if (known.has(r.id) || neighbours.some((n) => n.id === r.id)) continue
-      neighbours.push({ id: r.id, name: r.name })
-      parents.set(r.id, p.name)
-      if (neighbours.length >= NEIGHBOURS) break
+      if (known.has(r.id) || seenNeighbour.has(r.id)) continue
+      seenNeighbour.add(r.id)
+      candidates.push({ id: r.id, name: r.name, parent: p.name })
     }
-    if (neighbours.length >= NEIGHBOURS) break
   }
+  // Сначала набираем артистов, которых нет в библиотеке: иначе при высокой
+  // новизне новых пулов просто не хватит и поток вернётся к знакомым.
+  const freshCandidates = shuffle(
+    candidates.filter((c) => !libraryArtists.has(flat(c.name)))
+  )
+  const familiarCandidates = shuffle(
+    candidates.filter((c) => libraryArtists.has(flat(c.name)))
+  )
+  const neighbours = [...freshCandidates, ...familiarCandidates].slice(0, NEIGHBOURS)
+  for (const n of neighbours) parents.set(n.id, n.parent)
   const neighbourProfiles = await mapLimit(neighbours.slice(0, NEIGHBOURS), 4, (n) =>
     youtube.musicArtist({ id: n.id, name: n.name }).catch(() => null)
   )
@@ -435,13 +464,15 @@ export async function start(
     artists: [...good, ...neighbourProfiles.filter(Boolean)].map((p) => ({ id: p!.id, name: p!.name })),
     known,
     libraryIds,
+    libraryArtists,
     shelf,
     sinceLibrary: LIBRARY_GAP,
-    ring: 1,
     cursor: 0,
     genres: selectedGenres,
     excludeGenres: excludedGenres,
     novelty,
+    knownDrawn: 0,
+    newDrawn: 0,
     included: includedKeys,
     excluded: excludedKeys,
     blocked: new Set(),
@@ -450,11 +481,9 @@ export async function start(
     routes,
     seedWeights: seedWeight,
     stats: {
-      startedAt: Date.now(),
       tracks: 0,
       seconds: 0,
       artists: new Set(),
-      libraryTracks: 0,
       knownArtists
     }
   }
@@ -466,12 +495,17 @@ export async function start(
       used,
       keys,
       routes,
-      (p) => routeTo(sess, p)
+      (p) => routeTo(sess, p),
+      libraryArtists
     )
   )
   if (!sess.pools.length) throw new Error('Не удалось набрать треки: попробуйте ещё раз')
   sess.cursor = Math.floor(Math.random() * Math.max(1, sess.pools.length))
   session = sess
+
+  // На высокой новизне сразу подключаем второй круг: иначе новых артистов
+  // может не хватить, и поток быстро вернётся к знакомым.
+  if (novelty >= 70) await expand(sess).catch(() => false)
 
   let tracks = draw(sess, FIRST_FILL)
   // пересборка не должна начинаться тем же артистом, что и предыдущая
@@ -507,9 +541,7 @@ function statsOf(s: Session): FlowStats {
   return {
     tracks: s.stats.tracks,
     seconds: Math.round(s.stats.seconds),
-    artists: artists.length,
     newArtists: artists.filter((a) => !s.stats.knownArtists.has(a.toLowerCase())).length,
-    libraryTracks: s.stats.libraryTracks
   }
 }
 
@@ -523,13 +555,12 @@ export function info(): FlowInfo {
       excludeGenres: [],
       novelty: 55,
       routes: {},
-      stats: { tracks: 0, seconds: 0, artists: 0, newArtists: 0, libraryTracks: 0 }
+      stats: { tracks: 0, seconds: 0, newArtists: 0 }
     }
   }
   return {
     active: true,
     seeds: s.seeds.map((seed) => ({ ...seed, weight: s.seedWeights.get(seed.name) ?? seed.weight ?? 0 })),
-    genre: s.genres[0],
     genres: s.genres,
     excludeGenres: s.excludeGenres,
     novelty: s.novelty,
@@ -546,7 +577,6 @@ export function notePlayed(track: Track): void {
   s.stats.tracks += 1
   s.stats.seconds += Math.max(0, track.durationSec ?? 0)
   if (artist) s.stats.artists.add(artist)
-  if (s.libraryIds.has(track.id)) s.stats.libraryTracks += 1
 }
 
 /** Слайдер новизны меняет плотность знакомых треков на лету. */
@@ -572,7 +602,8 @@ async function addSeedArtist(s: Session, name: string): Promise<boolean> {
     s.used,
     s.keys,
     s.routes,
-    (p) => routeTo(s, p)
+    (p) => routeTo(s, p),
+    s.libraryArtists
   )
   if (!added.length) return false
   s.pools.push(...added)

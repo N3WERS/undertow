@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { FlowInfo, FlowOptions, FlowRoute, FlowStats, Track } from '../types'
 import { fmtTime } from './TrackList'
-import { IconCheck, IconPause, IconPlay, IconPlus, IconWave, IconX } from './Icons'
+import { IconCheck, IconPause, IconPlay, IconPlus, IconRefresh, IconWave, IconX } from './Icons'
 import TopoField from './TopoField'
 
 interface Props {
@@ -11,7 +11,7 @@ interface Props {
   active: boolean
   loading: boolean
   onStart: (options?: FlowOptions) => void
-  onPlay: (track: Track, list: Track[]) => void
+  onPlayFlow: (track: Track, list: Track[]) => void
   onToggle: () => void
   onArtistRadio: (name: string) => void
   onFeedback: (action: 'more' | 'less' | 'skipArtist', track: Track) => Promise<void>
@@ -87,7 +87,7 @@ export default function FlowView({
   active,
   loading,
   onStart,
-  onPlay,
+  onPlayFlow,
   onToggle,
   onArtistRadio,
   onFeedback,
@@ -101,7 +101,6 @@ export default function FlowView({
   const [genresLoading, setGenresLoading] = useState(true)
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
   const [genreMode, setGenreMode] = useState<'include' | 'exclude'>('include')
-  const [genreQuery, setGenreQuery] = useState('')
   const [seedQuery, setSeedQuery] = useState('')
   const [seedResults, setSeedResults] = useState<{ id?: string; name: string; coverUrl?: string }[]>([])
   const [seedSearchBusy, setSeedSearchBusy] = useState(false)
@@ -188,11 +187,7 @@ export default function FlowView({
 
   const selectedGenres = new Set(prefs.genres)
   const excludedGenres = new Set(prefs.excludeGenres)
-  const filteredGenres = useMemo(() => {
-    const q = genreQuery.trim().toLowerCase()
-    if (!q) return genreList
-    return genreList.filter((g) => g.name.toLowerCase().includes(q))
-  }, [genreList, genreQuery])
+
 
   const toggleGenre = (id: string) => {
     setPrefs((prev) => {
@@ -353,127 +348,86 @@ export default function FlowView({
           <span className="flow-kicker">поток без конца</span>
           <h1 className="flow-title">Течение</h1>
           <p className="flow-lead">
-            Любимые артисты, их соседи и соседи соседей — по кругу. Течение не заканчивается:
-            запас пополняется сам, пока играет музыка, а треки из вашей библиотеки туда почти
-            не попадают.
+            Бесконечный поток по вашей библиотеке: любимые артисты, похожие на них
+            и редкие треки из лайков. Дальше очередь пополняется сама.
           </p>
 
-          <div className="flow-genre-tools">
-            <input
-              className="flow-genre-search"
-              value={genreQuery}
-              onChange={(e) => setGenreQuery(e.target.value)}
-              placeholder="найти жанр"
-              aria-label="Поиск жанра"
-            />
-            <div className="flow-genre-mode" role="group" aria-label="Режим выбора жанров">
-              <button
-                className={genreMode === 'include' ? 'on' : ''}
-                onClick={() => setGenreMode('include')}
-              >
-                слушать
-              </button>
-              <button
-                className={genreMode === 'exclude' ? 'on' : ''}
-                onClick={() => setGenreMode('exclude')}
-              >
-                исключить
-              </button>
-            </div>
-          </div>
-
-          <div className="flow-genres" role="group" aria-label="Жанр течения">
-            {genresLoading && !genreList.length ? (
-              <>
-                <span className="flow-genre skeleton" />
-                <span className="flow-genre skeleton" />
-                <span className="flow-genre skeleton" />
-              </>
-            ) : (
+          <div className="flow-actions flow-actions-main">
+            {active ? (
               <>
                 <button
-                  className={`flow-genre${!prefs.genres.length && !prefs.excludeGenres.length ? ' on' : ''}`}
-                  onClick={() => setPrefs((prev) => ({ ...prev, genres: [], excludeGenres: [] }))}
+                  className="play-btn flow-main-play"
+                  onClick={onToggle}
+                  disabled={loading}
                 >
-                  всё
+                  {playing ? <IconPause width={15} height={15} /> : <IconPlay width={15} height={15} />}
+                  {playing ? 'Пауза' : 'Продолжить'}
                 </button>
-                {filteredGenres.map((g) => (
-                  <button
-                    key={g.id}
-                    className={`flow-genre${selectedGenres.has(g.id) ? ' on' : ''}${
-                      excludedGenres.has(g.id) ? ' off' : ''
-                    }`}
-                    onClick={() => toggleGenre(g.id)}
-                    title={`${g.artists} артистов в библиотеке`}
-                  >
-                    {g.name}
-                    <i>{g.artists}</i>
-                  </button>
-                ))}
-                {!filteredGenres.length && genreQuery ? (
-                  <span className="flow-genre-empty">жанр не найден</span>
-                ) : null}
+                <button
+                  className="flow-secondary"
+                  onClick={start}
+                  disabled={loading}
+                  title="Собрать новый поток с текущими настройками"
+                >
+                  <IconRefresh width={13} height={13} />
+                  {loading ? 'Собираю…' : 'Пересобрать'}
+                </button>
               </>
+            ) : (
+              <button className="play-btn flow-main-play" onClick={start} disabled={loading}>
+                <IconPlay width={15} height={15} />
+                {loading ? 'Собираю…' : 'Запустить течение'}
+              </button>
             )}
-          </div>
-
-          <div className="flow-novelty">
-            <div className="flow-novelty-head">
-              <span>знакомое</span>
-              <b>{prefs.novelty}% новизны</b>
-              <span>новое</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={prefs.novelty}
-              onChange={(e) => setNovelty(Number(e.target.value))}
-              aria-label="Новизна течения"
-            />
-          </div>
-
-          <div className="flow-actions">
-            <button className="play-btn" onClick={start} disabled={loading}>
-              <IconPlay width={15} height={15} />
-              {loading ? 'собираю…' : active ? 'Собрать заново' : 'Запустить'}
-            </button>
-            {genreName ? <span className="flow-selected-genres">{genreName}</span> : null}
             {active ? (
               <span className="flow-live">
                 <span className="flow-dot" />
-                {playing ? 'звучит' : 'на паузе'}
+                {playing ? 'Играет' : 'На паузе'}
               </span>
             ) : null}
           </div>
+          <div className="flow-hero-quick">
+            <span>
+              {prefs.genres.length
+                ? `жанры: ${prefs.genres.length}`
+                : prefs.excludeGenres.length
+                  ? `исключено жанров: ${prefs.excludeGenres.length}`
+                  : 'все жанры'}{' '}
+              · {prefs.novelty}% новых артистов
+            </span>
+            <button
+              onClick={() =>
+                document.getElementById('flow-setup')?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center'
+                })
+              }
+            >
+              {active ? 'изменить настройки' : 'настроить поток'}
+            </button>
+          </div>
+
+          {stats && stats.tracks > 0 ? (
+            <div className="flow-hero-stats" aria-label="Статистика потока">
+              <span className="flow-hero-stat-lead">
+                <b>{statsMinutes}</b>
+                <i>мин в потоке</i>
+              </span>
+              <span>
+                <b>{stats.tracks}</b>
+                <i>{plural(stats.tracks, 'трек', 'трека', 'треков')}</i>
+              </span>
+              <span>
+                <b>{stats.newArtists}</b>
+                <i>{plural(stats.newArtists, 'новый артист', 'новых артиста', 'новых артистов')}</i>
+              </span>
+            </div>
+          ) : null}
         </div>
       </section>
 
       {active && current ? (
         <section className="flow-live-block fade-up">
-          {stats && stats.tracks > 0 ? (
-            <div className="flow-log flow-session-stats">
-              <span className="flow-log-lead">
-                <b>{statsMinutes}</b>
-                <i>мин в потоке</i>
-              </span>
-              <span>
-                <b>{stats.tracks}</b> {plural(stats.tracks, 'трек', 'трека', 'треков')}
-              </span>
-              <span>
-                <b>{stats.newArtists}</b>{' '}
-                {plural(stats.newArtists, 'новый артист', 'новых артиста', 'новых артистов')}
-              </span>
-              <span>
-                <b>{stats.libraryTracks}</b> из библиотеки
-              </span>
-              <span className="flow-log-state">
-                <i aria-hidden="true" />
-                поток живёт
-              </span>
-            </div>
-          ) : null}
           <div className="flow-now surface-hero surface-deep">
             <div
               className="flow-now-glow"
@@ -493,6 +447,7 @@ export default function FlowView({
               </div>
               {route ? (
                 <div className="flow-why">
+                  <span className="flow-route-label">почему этот трек</span>
                   {route.library ? (
                     <>
                       <span className="flow-route-icon">
@@ -523,21 +478,48 @@ export default function FlowView({
                   )}
                 </div>
               ) : null}
+            </div>
+            <div className="flow-now-controls">
+              <div className="flow-feedback-head">
+                Подстроить поток <span>только на эту сессию</span>
+              </div>
               <div className="flow-feedback">
-                <button disabled={feedbackBusy} onClick={() => void sendFeedback('more')}>
-                  ещё такого
+                <button
+                  disabled={feedbackBusy}
+                  onClick={() => void sendFeedback('more')}
+                  title="Добавить больше треков этого артиста в очередь"
+                >
+                  чаще этот артист
                 </button>
-                <button disabled={feedbackBusy} onClick={() => void sendFeedback('less')}>
-                  не это
+                <button
+                  disabled={feedbackBusy}
+                  onClick={() => void sendFeedback('less')}
+                  title="Пропустить трек и не ставить его снова в этом потоке"
+                >
+                  пропустить трек
                 </button>
-                <button disabled={feedbackBusy} onClick={() => void sendFeedback('skipArtist')}>
-                  пропустить артиста
+                <button
+                  disabled={feedbackBusy}
+                  onClick={() => void sendFeedback('skipArtist')}
+                  title="Убрать артиста из текущего потока"
+                >
+                  убрать артиста
+                </button>
+              </div>
+              <div className="flow-now-bottom">
+                <p className="flow-feedback-note">
+                  «Чаще» добавит его треки, «Пропустить» уберёт текущий,
+                  «Убрать» исключит артиста из этого потока.
+                </p>
+                <button
+                  className="flow-now-toggle"
+                  onClick={onToggle}
+                  title={playing ? 'Пауза' : 'Играть'}
+                >
+                  {playing ? <IconPause width={16} height={16} /> : <IconPlay width={16} height={16} />}
                 </button>
               </div>
             </div>
-            <button className="flow-now-toggle" onClick={onToggle} title={playing ? 'Пауза' : 'Играть'}>
-              {playing ? <IconPause width={16} height={16} /> : <IconPlay width={16} height={16} />}
-            </button>
           </div>
 
           <div className="flow-next surface-hero surface-deep">
@@ -550,7 +532,7 @@ export default function FlowView({
               <button
                 key={`${t.id}-${i}`}
                 className="flow-next-row flow-stop"
-                onClick={() => onPlay(t, queue)}
+                onClick={() => onPlayFlow(t, queue)}
                 onMouseEnter={() => onHover?.(t)}
               >
                 <span className="flow-stop-dot" aria-hidden="true" />
@@ -574,25 +556,145 @@ export default function FlowView({
         </section>
       ) : (
         <section className="flow-idle fade-up">
-          <div className="flow-idle-art">
-            <IconWave width={26} height={26} />
+          <div className="flow-idle-head">
+            <div className="flow-idle-art">
+              <IconWave width={26} height={26} />
+            </div>
+            <div>
+              <b>Течение ещё не запущено</b>
+              <p>
+                Оно соберёт поток из артистов, которых вы лайкаете и слушаете, добавит
+                похожих на них и будет пополнять очередь само.
+              </p>
+            </div>
           </div>
-          <div>
-            <b>Течение пока стоит</b>
-            <p>
-              Включите — и пойдёт поток из артистов, которых вы слушаете, и похожих на них.
-              Треки, которые уже есть в библиотеке, туда почти не попадают.
-            </p>
+          <div className="flow-idle-steps">
+            <span><i>1</i> Любимые артисты уже взяты из библиотеки</span>
+            <span><i>2</i> Жанры и новизну можно оставить как есть</span>
+            <span><i>3</i> Нажмите «Запустить течение» выше</span>
           </div>
         </section>
       )}
+
+      <section id="flow-setup" className="flow-setup surface-hero surface-deep fade-up">
+        <div className="flow-setup-head">
+          <div>
+            <h2>Настройки потока</h2>
+            <p>Можно менять до запуска и во время — всё запоминается.</p>
+          </div>
+          <span className="flow-setup-saved">сохраняется автоматически</span>
+        </div>
+
+        <div className="flow-setup-grid">
+          <div className="flow-setup-block">
+            <div className="flow-setup-title">
+              <b>Жанры</b>
+              <span>
+                {prefs.genres.length
+                  ? `включено: ${prefs.genres.length}`
+                  : prefs.excludeGenres.length
+                    ? `исключено: ${prefs.excludeGenres.length}`
+                    : 'все жанры'}
+              </span>
+            </div>
+
+            <div className="flow-genre-tools">
+              <div className="flow-genre-mode" role="group" aria-label="Режим выбора жанров">
+                <button
+                  className={genreMode === 'include' ? 'on' : ''}
+                  onClick={() => setGenreMode('include')}
+                  aria-pressed={genreMode === 'include'}
+                >
+                  включить
+                </button>
+                <button
+                  className={genreMode === 'exclude' ? 'on' : ''}
+                  onClick={() => setGenreMode('exclude')}
+                  aria-pressed={genreMode === 'exclude'}
+                >
+                  исключить
+                </button>
+              </div>
+            </div>
+            <p className="flow-setup-hint">
+              {genreMode === 'include'
+                ? 'Ничего не выбрано — берём всю библиотеку. Выбранные жанры будут звучать чаще.'
+                : 'Эти жанры не будут попадать в поток.'}
+            </p>
+            {prefs.genres.length || prefs.excludeGenres.length ? (
+              <p className="flow-apply-note">
+                {active
+                  ? 'Применится после кнопки «Пересобрать».'
+                  : 'Применится при следующем запуске.'}
+              </p>
+            ) : null}
+
+            <div className="flow-genres" role="group" aria-label="Жанр течения">
+              {genresLoading && !genreList.length ? (
+                <>
+                  <span className="flow-genre skeleton" />
+                  <span className="flow-genre skeleton" />
+                  <span className="flow-genre skeleton" />
+                </>
+              ) : (
+                <>
+                  <button
+                    className={`flow-genre${!prefs.genres.length && !prefs.excludeGenres.length ? ' on' : ''}`}
+                    onClick={() => setPrefs((prev) => ({ ...prev, genres: [], excludeGenres: [] }))}
+                  >
+                    всё
+                  </button>
+                  {genreList.map((g) => (
+                    <button
+                      key={g.id}
+                      className={`flow-genre${selectedGenres.has(g.id) ? ' on' : ''}${
+                        excludedGenres.has(g.id) ? ' off' : ''
+                      }`}
+                      onClick={() => toggleGenre(g.id)}
+                      title={`${g.artists} артистов в библиотеке`}
+                    >
+                      {g.name}
+                      <i>{g.artists}</i>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+            {genreName ? <span className="flow-selected-genres">сейчас: {genreName}</span> : null}
+          </div>
+
+          <div className="flow-setup-block flow-setup-novelty">
+            <div className="flow-setup-title">
+              <b>Новизна</b>
+              <span>{prefs.novelty}% новых</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={prefs.novelty}
+              onChange={(e) => setNovelty(Number(e.target.value))}
+              aria-label="Новизна течения"
+            />
+            <div className="flow-novelty-scale">
+              <span>только знакомые</span>
+              <span>только новые</span>
+            </div>
+            <p className="flow-setup-hint">
+              Доля артистов, которых нет в вашей библиотеке.
+              {active ? ' Меняется сразу.' : ' Применится при запуске.'}
+            </p>
+          </div>
+        </div>
+      </section>
 
       <section className="section fade-up">
         <div className="section-head">
           <div className="section-title">
             <div>
-              <h2>Из чего течёт</h2>
-              <div className="section-sub">закрепите любимых — они станут основой потока</div>
+              <h2>Основа потока</h2>
+              <div className="section-sub">Эти артисты задают направление. Закрепите любимых или уберите лишних.</div>
             </div>
           </div>
           <div className="section-tools">
@@ -603,6 +705,10 @@ export default function FlowView({
             </span>
           </div>
         </div>
+
+        <p className="flow-seed-help">
+          Нажмите на артиста, чтобы включить его радио. <b>+</b> закрепить, <b>×</b> убрать.
+        </p>
 
         <div className="seed-search">
           <input
@@ -671,7 +777,7 @@ export default function FlowView({
                         )}
                       </span>
                       <span className="seed-name">{s.name}</span>
-                      <span className="seed-sub">{pinned ? 'закреплён' : 'радио →'}</span>
+                      <span className="seed-sub">{pinned ? 'закреплён' : 'включить радио'}</span>
                     </button>
                     <div className="seed-actions">
                       <button
@@ -710,10 +816,6 @@ export default function FlowView({
         ) : null}
       </section>
 
-      <p className="flow-note">
-        Свои треки тоже иногда всплывают — примерно один на двадцать, чтобы знакомое не
-        вытесняло новое. Слайдер новизны меняет этот баланс.
-      </p>
     </div>
   )
 }

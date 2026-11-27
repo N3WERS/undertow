@@ -776,6 +776,19 @@ export default function App() {
     void engineRef.current?.setQueue(playable, at >= 0 ? at : 0)
   }, [])
 
+  /** Переход к треку внутри уже запущенного «Течения», без его выключения. */
+  const playFlowTrack = useCallback((t: Track, list: Track[]) => {
+    const playable = list.filter((x) => x.playable)
+    const at = playable.findIndex((x) => x.id === t.id)
+    setTrack(t)
+    setQuality(null)
+    setResolving(true)
+    radioRef.current = null
+    flowRef.current = true
+    setFlowActive(true)
+    void engineRef.current?.setQueue(playable, at >= 0 ? at : 0)
+  }, [])
+
   const playSavedAlbum = useCallback(
     (album: SavedAlbum) => {
       const tracks = album.tracks.filter((t) => t.playable)
@@ -1297,7 +1310,7 @@ export default function App() {
               active={flowActive}
               loading={flowLoading}
               onStart={(options) => void startFlow(options)}
-              onPlay={playTrack}
+              onPlayFlow={playFlowTrack}
               onToggle={toggle}
               onArtistRadio={(name) => void startRadio({ name })}
               onFeedback={flowFeedback}

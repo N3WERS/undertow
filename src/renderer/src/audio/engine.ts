@@ -106,7 +106,6 @@ export class AudioEngine {
   private eqNodes: BiquadFilterNode[] = []
   private buf: Float32Array = new Float32Array(2048)
   private freqBuf: Uint8Array = new Uint8Array(1024)
-  private level = 0
 
   private queue: Track[] = []
   private index = -1
@@ -1239,7 +1238,6 @@ export class AudioEngine {
     }
 
     const duration = Number.isFinite(el.duration) ? el.duration : (this.queue[this.index]?.durationSec ?? 0)
-    const time = el.src ? el.currentTime || 0 : 0
     const remain = duration - el.currentTime
 
     const upcoming = this.nextIndex()
