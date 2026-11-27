@@ -1,7 +1,7 @@
 /**
  * Автообновление desktop-сборки через electron-updater.
  *
- * Проверяем публичный репозиторий релизов (N3WERS/undertow-releases),
+ * Проверяем публичный основной репозиторий (N3WERS/undertow),
  * скачивание запускаем только по кнопке, установку — тоже.
  */
 import { app, BrowserWindow } from 'electron'

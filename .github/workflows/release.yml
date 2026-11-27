@@ -35,14 +35,20 @@ jobs:
       - name: Показать, что собралось
         run: dir release
 
-      - name: Приложить установщик к релизу
+      - name: Приложить установщик и фид к релизу
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: release/Undertow-Setup-*.exe
+          files: |
+            release/Undertow-Setup-*.exe
+            release/latest.yml
+            release/*.blockmap
           generate_release_notes: true
 
-      - name: Опубликовать фид обновлений
+      # Старые установки 0.7.9 и ниже ищут обновления в undertow-releases.
+      # Одно зеркало нужно, чтобы они получили версию с новым app-update.yml
+      # и дальше перешли на основной репозиторий. Для новых версий это не нужно.
+      - name: Зеркало фида для старых версий
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:

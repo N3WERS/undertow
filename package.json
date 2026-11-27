@@ -1,6 +1,6 @@
 {
   "name": "undertow",
-  "version": "0.7.9",
+  "version": "0.7.10",
   "private": true,
   "type": "module",
   "description": "Undertow — personal music streaming client",
@@ -66,7 +66,7 @@
       {
         "provider": "github",
         "owner": "N3WERS",
-        "repo": "undertow-releases",
+        "repo": "undertow",
         "releaseType": "release"
       }
     ],
