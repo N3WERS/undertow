@@ -9,6 +9,7 @@ import * as queueStore from './queueStore'
 import * as versions from './versions'
 import * as releases from './releases'
 import * as offline from './offline'
+import * as downloads from './downloads'
 import * as savedAlbums from './savedAlbums'
 import * as genres from './genres'
 import type { FlowFeedback, FlowOptions } from './flow'
@@ -90,6 +91,21 @@ export function registerIpc(): void {
       if (win && !win.isDestroyed()) win.webContents.send('offline:progress', progress)
     })
   })
+  // очередь загрузок: прогресс и состояние живут в main и переживают перезапуск
+  void downloads.init()
+  downloads.onChange((snapshot) => {
+    for (const target of BrowserWindow.getAllWindows()) {
+      if (!target.isDestroyed()) target.webContents.send('downloads:state', snapshot)
+    }
+  })
+  ipcMain.handle('downloads:list', async () => downloads.list())
+  ipcMain.handle('downloads:enqueue', async (_e, tracks: Track[]) => downloads.enqueue(Array.isArray(tracks) ? tracks : []))
+  ipcMain.handle('downloads:pause', async () => downloads.pause())
+  ipcMain.handle('downloads:resume', async () => downloads.resume())
+  ipcMain.handle('downloads:retry', async (_e, id: string) => downloads.retry(String(id)))
+  ipcMain.handle('downloads:remove', async (_e, id: string) => downloads.remove(String(id)))
+  ipcMain.handle('downloads:clear-finished', async () => downloads.clearFinished())
+
   ipcMain.handle('offline:remove', async (_e, id: string) => offline.remove(String(id)))
   ipcMain.handle('offline:clear', async () => offline.clearAll())
   ipcMain.handle('offline:reveal', async () => {
@@ -158,6 +174,8 @@ export function registerIpc(): void {
   ipcMain.handle('flow:more', async () => providers.flowMore())
   ipcMain.handle('flow:info', async () => providers.flowInfo())
   ipcMain.handle('flow:seeds', async () => providers.flowSeeds())
+  ipcMain.handle('flow:tracks', async () => providers.flowTracks())
+  ipcMain.handle('flow:discoveries', async () => providers.flowDiscoveries())
 
   ipcMain.handle('state', async () => providers.getState())
   ipcMain.handle('library:enrich', async () => providers.enrichLibrary())

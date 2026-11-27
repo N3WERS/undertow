@@ -248,6 +248,14 @@ export function flowSeeds(): { name: string; weight: number }[] {
   return flow.seeds()
 }
 
+export function flowTracks(): Track[] {
+  return flow.stream()
+}
+
+export function flowDiscoveries(): { name: string; coverUrl?: string; at: number }[] {
+  return flow.discoveries()
+}
+
 export function addHistory(track: Track): void {
   library.addHistory(track)
 }

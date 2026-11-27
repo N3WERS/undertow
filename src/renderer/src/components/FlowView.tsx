@@ -15,6 +15,8 @@ interface Props {
   onToggle: () => void
   onArtistRadio: (name: string) => void
   onFeedback: (action: 'more' | 'less' | 'skipArtist', track: Track) => Promise<void>
+  onSave?: () => void
+  saving?: boolean
   onToast?: (text: string, kind?: 'info' | 'error') => void
   radioLoading?: boolean
   onHover?: (track: Track) => void
@@ -91,6 +93,8 @@ export default function FlowView({
   onToggle,
   onArtistRadio,
   onFeedback,
+  onSave,
+  saving,
   onToast,
   radioLoading,
   onHover
@@ -108,9 +112,24 @@ export default function FlowView({
   const [feedbackBusy, setFeedbackBusy] = useState(false)
   const [routes, setRoutes] = useState<Record<string, FlowRoute>>({})
   const [stats, setStats] = useState<FlowStats | null>(null)
+  const [discoveries, setDiscoveries] = useState<{ name: string; coverUrl?: string; at: number }[]>([])
 
   const alive = active && playing
   const current = active && index >= 0 ? queue[index] : undefined
+
+  useEffect(() => {
+    if (!active) return
+    let mounted = true
+    void window.undertow
+      .flowDiscoveries()
+      .then((list) => {
+        if (mounted) setDiscoveries(list)
+      })
+      .catch(() => undefined)
+    return () => {
+      mounted = false
+    }
+  }, [active, stats?.tracks])
   const upcoming = active && index >= 0 ? queue.slice(index + 1, index + 9) : []
   const route = current && routes ? routes[current.id] : undefined
 
@@ -298,6 +317,21 @@ export default function FlowView({
     }
   }
 
+  const blockForever = async () => {
+    if (!current?.artist) return
+    setFeedbackBusy(true)
+    try {
+      const info = await window.undertow.flowSeed('exclude', current.artist)
+      applyInfo(info)
+      onToast?.(`${current.artist} больше не появится в Течении`)
+      onFeedback('skipArtist', current).catch(() => undefined)
+    } catch (e) {
+      onToast?.(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setFeedbackBusy(false)
+    }
+  }
+
   const sendFeedback = async (action: 'more' | 'less' | 'skipArtist') => {
     if (!current || feedbackBusy) return
     setFeedbackBusy(true)
@@ -372,6 +406,17 @@ export default function FlowView({
                   <IconRefresh width={13} height={13} />
                   {loading ? 'Собираю…' : 'Пересобрать'}
                 </button>
+                {onSave ? (
+                  <button
+                    className="flow-secondary"
+                    onClick={onSave}
+                    disabled={saving}
+                    title="Сохранить все треки этого потока в плейлист"
+                  >
+                    <IconPlus width={13} height={13} />
+                    {saving ? 'Сохраняю…' : 'Сохранить'}
+                  </button>
+                ) : null}
               </>
             ) : (
               <button className="play-btn flow-main-play" onClick={start} disabled={loading}>
@@ -427,6 +472,7 @@ export default function FlowView({
       </section>
 
       {active && current ? (
+        <>
         <section className="flow-live-block fade-up">
           <div className="flow-now surface-hero surface-deep">
             <div
@@ -505,11 +551,18 @@ export default function FlowView({
                 >
                   убрать артиста
                 </button>
+                <button
+                  disabled={feedbackBusy}
+                  onClick={() => void blockForever()}
+                  title="Исключить артиста из всех будущих потоков"
+                >
+                  убрать навсегда
+                </button>
               </div>
               <div className="flow-now-bottom">
                 <p className="flow-feedback-note">
                   «Чаще» добавит его треки, «Пропустить» уберёт текущий,
-                  «Убрать» исключит артиста из этого потока.
+                  «Убрать» исключит из этого потока, «Навсегда» — из всех будущих.
                 </p>
                 <button
                   className="flow-now-toggle"
@@ -554,6 +607,26 @@ export default function FlowView({
             ) : null}
           </div>
         </section>
+
+        {discoveries.length > 0 ? (
+          <section className="flow-discoveries fade-up">
+            <div className="flow-discoveries-head">
+              <b>Открыли в Течении</b>
+              <span>артисты, которых раньше не было в библиотеке</span>
+            </div>
+            <div className="flow-discoveries-list">
+              {discoveries.slice(0, 8).map((artist) => (
+                <button key={artist.name} onClick={() => onArtistRadio(artist.name)}>
+                  <span className="flow-discovery-avatar">
+                    {artist.coverUrl ? <img src={artist.coverUrl} alt="" loading="lazy" /> : artist.name.charAt(0)}
+                  </span>
+                  <span>{artist.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        </>
       ) : (
         <section className="flow-idle fade-up">
           <div className="flow-idle-head">

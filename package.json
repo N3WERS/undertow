@@ -1,6 +1,6 @@
 {
   "name": "undertow",
-  "version": "0.7.3",
+  "version": "0.7.9",
   "private": true,
   "type": "module",
   "description": "Undertow — personal music streaming client",
@@ -24,6 +24,7 @@
     "vite": "^8.3.8"
   },
   "dependencies": {
+    "discord-rpc": "^4.0.1",
     "electron-updater": "^6.8.11",
     "hls.js": "^1.7.4",
     "react": "^19.3.1",
@@ -55,6 +56,10 @@
       {
         "from": "resources/bin",
         "to": "bin"
+      },
+      {
+        "from": "resources/thumbar",
+        "to": "thumbar"
       }
     ],
     "publish": [

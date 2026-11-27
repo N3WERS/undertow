@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { BrowsePage, Track } from '../types'
 import TrackList from './TrackList'
-import { IconBookmark, IconPlay, IconRadio } from './Icons'
+import { IconBookmark, IconDownload, IconPlay, IconRadio, IconWave } from './Icons'
+import { enqueueDownloads } from '../downloads'
 
 interface Props {
   kind: 'artist' | 'album' | 'playlist'
@@ -23,6 +24,7 @@ interface Props {
   onOpenArtist?: (target: { id?: string; name: string }) => void
   /** «радио артиста»: своё + похожие, сразу в очередь */
   onRadio?: () => void
+  onFlow?: (tracks: Track[], title: string) => void
   radioLoading?: boolean
   /** альбом уже сохранён в библиотеке */
   albumSaved?: boolean
@@ -52,6 +54,7 @@ export default function BrowseView({
   onSimilar,
   onOpenArtist,
   onRadio,
+  onFlow,
   radioLoading,
   albumSaved,
   onToggleAlbum
@@ -167,6 +170,26 @@ export default function BrowseView({
               <IconPlay width={15} height={15} />
               Слушать всё
             </button>
+            {playable.length > 0 ? (
+              <button
+                className="ghost-btn"
+                title="Поставить все треки в очередь загрузок"
+                onClick={() => void enqueueDownloads(playable)}
+              >
+                <IconDownload width={14} height={14} />
+                Скачать
+              </button>
+            ) : null}
+            {onFlow && playable.length > 0 ? (
+              <button
+                className="ghost-btn"
+                title="Запустить Течение от этого списка"
+                onClick={() => onFlow(playable, page.title)}
+              >
+                <IconWave width={14} height={14} />
+                Течение
+              </button>
+            ) : null}
             {kind === 'artist' && onRadio ? (
               <button className="ghost-btn radio-btn" onClick={onRadio} disabled={radioLoading}>
                 <IconRadio width={14} height={14} />

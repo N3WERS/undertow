@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Playlist, PlaylistSummary, Track } from '../types'
 import TrackList from './TrackList'
-import { IconPlay, IconX } from './Icons'
+import { IconDownload, IconPlay, IconWave, IconX } from './Icons'
+import { enqueueDownloads } from '../downloads'
 
 interface Props {
   canImport: boolean
@@ -17,6 +18,7 @@ interface Props {
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
   onAddToPlaylist?: (track: Track) => void
   onSimilar?: (track: Track) => void
+  onFlow?: (tracks: Track[], title: string) => void
   onToast: (text: string, kind?: 'info' | 'error') => void
   /** чтобы App мог обновить счётчики/тосты при изменении списка */
   onChanged?: () => void
@@ -36,6 +38,7 @@ export default function PlaylistsView({
   onOpenAlbum,
   onAddToPlaylist,
   onSimilar,
+  onFlow,
   onToast,
   onChanged
 }: Props) {
@@ -203,6 +206,24 @@ export default function PlaylistsView({
             >
               <IconPlay width={15} height={15} />
               Слушать
+            </button>
+            {onFlow ? (
+              <button
+                className="ghost-btn"
+                disabled={!playlist.tracks.length}
+                onClick={() => onFlow(playlist.tracks, playlist.title)}
+              >
+                <IconWave width={13} height={13} />
+                течение
+              </button>
+            ) : null}
+            <button
+              className="ghost-btn"
+              disabled={!playlist.tracks.length}
+              onClick={() => void enqueueDownloads(playlist.tracks)}
+            >
+              <IconDownload width={13} height={13} />
+              скачать
             </button>
             <button className="ghost-btn" onClick={() => void exportPlaylists()}>
               экспорт

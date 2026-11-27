@@ -1,3 +1,7 @@
+import { app } from 'electron'
+import fs from 'node:fs'
+import fsp from 'node:fs/promises'
+import path from 'node:path'
 import type { Track } from './providers/types'
 import { snapshot } from './library'
 import { artistWeights } from './browse'
@@ -47,6 +51,10 @@ export interface FlowOptions {
   novelty?: number
   includeSeeds?: string[]
   excludeSeeds?: string[]
+  /** начать поток от этих артистов (трек, альбом, плейлист) */
+  startArtists?: string[]
+  /** подпись источника для заголовка */
+  sourceTitle?: string
 }
 
 export interface FlowSeed {
@@ -113,6 +121,8 @@ interface Session {
   routes: Map<string, FlowRoute>
   /** вес семян для полоски в интерфейсе */
   seedWeights: Map<string, number>
+  /** всё, что уже выдал поток: для сохранения в плейлист */
+  stream: Track[]
   stats: {
     tracks: number
     seconds: number
@@ -124,6 +134,63 @@ interface Session {
 let session: Session | null = null
 /** первый артист прошлой сборки — новую начинаем с другого */
 let lastOpenedArtist = ''
+
+interface Discovery {
+  name: string
+  coverUrl?: string
+  at: number
+}
+
+let storeLoaded = false
+let blockedArtists = new Set<string>()
+let discoveriesMap = new Map<string, Discovery>()
+
+function flowStorePath(name: string): string {
+  return path.join(app.getPath('userData'), name)
+}
+
+function loadFlowStores(): void {
+  if (storeLoaded) return
+  storeLoaded = true
+  try {
+    const blocked = JSON.parse(fs.readFileSync(flowStorePath('flow-blocked.json'), 'utf8')) as string[]
+    if (Array.isArray(blocked)) blockedArtists = new Set(blocked.map(flat).filter(Boolean))
+  } catch {
+    blockedArtists = new Set()
+  }
+  try {
+    const list = JSON.parse(fs.readFileSync(flowStorePath('flow-discoveries.json'), 'utf8')) as Discovery[]
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (item?.name) discoveriesMap.set(flat(item.name), item)
+      }
+    }
+  } catch {
+    discoveriesMap = new Map()
+  }
+}
+
+function saveFlowStore(name: string, data: unknown): void {
+  const file = flowStorePath(name)
+  const tmp = `${file}.tmp`
+  void fsp
+    .writeFile(tmp, JSON.stringify(data), 'utf8')
+    .then(() => fsp.rename(tmp, file))
+    .catch(() => undefined)
+}
+
+function isBlocked(name: string): boolean {
+  loadFlowStores()
+  return blockedArtists.has(flat(name))
+}
+
+function rememberDiscovery(name: string, coverUrl?: string): void {
+  loadFlowStores()
+  const key = flat(name)
+  if (!key || discoveriesMap.has(key)) return
+  discoveriesMap.set(key, { name, coverUrl, at: Date.now() })
+  saveFlowStore('flow-discoveries.json', [...discoveriesMap.values()].slice(-200))
+}
 
 /** Параллельные запросы с ограничением: страницы артистов тяжёлые. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<(R | null)[]> {
@@ -301,6 +368,12 @@ function draw(s: Session, want: number): Track[] {
       s.sinceLibrary = 0
     }
   }
+
+  for (const track of out) {
+    const artist = artistOf(track)
+    if (artist && !s.libraryArtists.has(flat(artist))) rememberDiscovery(artist, track.coverUrl)
+  }
+  s.stream.push(...out)
   return out
 }
 
@@ -354,6 +427,7 @@ async function expand(sessionArg: Session | null = session): Promise<boolean> {
 export async function start(
   options: FlowOptions = {}
 ): Promise<{ title: string; seeds: FlowSeed[]; tracks: Track[] }> {
+  loadFlowStores()
   const selectedGenres = [...new Set((options.genres ?? []).filter(Boolean))]
   const excludedGenres = [...new Set((options.excludeGenres ?? []).filter(Boolean))]
   const novelty = Math.max(0, Math.min(100, Math.round(options.novelty ?? 55)))
@@ -371,6 +445,7 @@ export async function start(
 
   const passName = (name: string): boolean => {
     const key = flat(name)
+    if (isBlocked(name)) return false
     if (excludedKeys.has(key)) return false
     if (excludedGenres.some((g) => genres.matches(name, g))) return false
     if (!selectedGenres.length) return true
@@ -378,6 +453,7 @@ export async function start(
   }
 
   let weights = artistWeights().filter((w) => {
+    if (isBlocked(w.name)) return false
     if (excludedKeys.has(flat(w.name))) return false
     if (excludedGenres.some((g) => genres.matches(w.name, g))) return false
     return !selectedGenres.length || selectedGenres.some((g) => genres.matches(w.name, g))
@@ -391,7 +467,16 @@ export async function start(
     const known = artistWeights().find((w) => flat(w.name) === flat(name))
     seedWeights.push({ name, score: known?.score ?? 0 })
   }
-  seedWeights = seedWeights.filter((w) => !excludedKeys.has(flat(w.name)))
+  seedWeights = seedWeights.filter((w) => !excludedKeys.has(flat(w.name)) && !isBlocked(w.name))
+
+  // поток от конкретного трека, альбома или плейлиста: эти артисты становятся
+  // семенами, даже если их ещё нет в библиотеке
+  const startArtists = [...new Set((options.startArtists ?? []).map((name) => name.trim()).filter(Boolean))]
+  if (startArtists.length) {
+    seedWeights = startArtists
+      .filter((name) => !isBlocked(name) && !excludedKeys.has(flat(name)))
+      .map((name) => ({ name, score: 100 }))
+  }
 
   if (!seedWeights.length) {
     throw new Error(
@@ -480,6 +565,7 @@ export async function start(
     parents,
     routes,
     seedWeights: seedWeight,
+    stream: [],
     stats: {
       tracks: 0,
       seconds: 0,
@@ -628,8 +714,13 @@ export async function seedAction(
   const key = flat(name)
   if (!s || !key) return info()
   if (action === 'include') {
+    loadFlowStores()
+    if (blockedArtists.delete(key)) saveFlowStore('flow-blocked.json', [...blockedArtists])
     await addSeedArtist(s, name)
   } else {
+    loadFlowStores()
+    blockedArtists.add(key)
+    saveFlowStore('flow-blocked.json', [...blockedArtists])
     s.excluded.add(key)
     s.blocked.add(key)
     s.included.delete(key)
@@ -671,4 +762,22 @@ export function seeds(): { name: string; weight: number }[] {
   return artistWeights()
     .slice(0, 10)
     .map((a) => ({ name: a.name, weight: a.score }))
+}
+
+
+/** Все треки, которые уже выдал текущий поток. */
+export function stream(): Track[] {
+  return session ? [...session.stream] : []
+}
+
+/** Артисты, которых поток открыл впервые. */
+export function discoveries(): { name: string; coverUrl?: string; at: number }[] {
+  loadFlowStores()
+  return [...discoveriesMap.values()].sort((a, b) => b.at - a.at)
+}
+
+/** Постоянный список исключённых артистов. */
+export function blocked(): string[] {
+  loadFlowStores()
+  return [...blockedArtists]
 }

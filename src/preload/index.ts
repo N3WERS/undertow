@@ -12,6 +12,18 @@ const api = {
   offlineRemove: (id: string) => ipcRenderer.invoke('offline:remove', id),
   offlineClear: () => ipcRenderer.invoke('offline:clear'),
   offlineReveal: () => ipcRenderer.invoke('offline:reveal'),
+  downloadsList: () => ipcRenderer.invoke('downloads:list'),
+  downloadsEnqueue: (tracks: unknown[]) => ipcRenderer.invoke('downloads:enqueue', tracks),
+  downloadsPause: () => ipcRenderer.invoke('downloads:pause'),
+  downloadsResume: () => ipcRenderer.invoke('downloads:resume'),
+  downloadsRetry: (id: string) => ipcRenderer.invoke('downloads:retry', id),
+  downloadsRemove: (id: string) => ipcRenderer.invoke('downloads:remove', id),
+  downloadsClearFinished: () => ipcRenderer.invoke('downloads:clear-finished'),
+  onDownloadsState: (cb: (state: unknown) => void) => {
+    const handler = (_e: unknown, state: unknown) => cb(state)
+    ipcRenderer.on('downloads:state', handler)
+    return () => ipcRenderer.removeListener('downloads:state', handler)
+  },
   queueGet: () => ipcRenderer.invoke('queue:get'),
   queueSave: (state: unknown) => ipcRenderer.invoke('queue:save', state),
   queueClear: () => ipcRenderer.invoke('queue:clear'),
@@ -42,6 +54,8 @@ const api = {
   flowMore: () => ipcRenderer.invoke('flow:more'),
   flowInfo: () => ipcRenderer.invoke('flow:info'),
   flowSeeds: () => ipcRenderer.invoke('flow:seeds'),
+  flowTracks: () => ipcRenderer.invoke('flow:tracks'),
+  flowDiscoveries: () => ipcRenderer.invoke('flow:discoveries'),
   refreshHome: () => ipcRenderer.invoke('home:refresh'),
   enrichLibrary: () => ipcRenderer.invoke('library:enrich'),
   hideSection: (id: string) => ipcRenderer.invoke('rec:hide', id),
@@ -94,6 +108,10 @@ const api = {
     return () => ipcRenderer.removeListener('update:state', handler)
   },
   miniState: () => ipcRenderer.invoke('window:mini-state'),
+  presenceGet: () => ipcRenderer.invoke('presence:get'),
+  presenceSet: (next: { enabled?: boolean }) => ipcRenderer.invoke('presence:set', next),
+  startupGet: () => ipcRenderer.invoke('app:startup-get'),
+  startupSet: (on: boolean) => ipcRenderer.invoke('app:startup-set', on),
   setMini: (on: boolean) => ipcRenderer.invoke('window:mini', on),
   toggleMini: () => ipcRenderer.invoke('window:mini-toggle'),
   reportPlayer: (state: unknown) => ipcRenderer.send('player:state', state),
@@ -113,6 +131,11 @@ const api = {
     const handler = (_e: unknown, on: boolean) => cb(on)
     ipcRenderer.on('window:mini-changed', handler)
     return () => ipcRenderer.removeListener('window:mini-changed', handler)
+  },
+  onLink: (cb: (url: string) => void) => {
+    const handler = (_e: unknown, url: string) => cb(url)
+    ipcRenderer.on('app:link', handler)
+    return () => ipcRenderer.removeListener('app:link', handler)
   },
   onPlayerCommand: (cb: (command: 'toggle' | 'next' | 'prev') => void) => {
     const handler = (_e: unknown, command: 'toggle' | 'next' | 'prev') => cb(command)

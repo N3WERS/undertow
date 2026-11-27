@@ -64,6 +64,7 @@ interface Props {
   onOpenArtist?: (target: { id?: string; name: string }) => void
   onOpenAlbum?: (target: { id?: string; title: string; artist?: string; trackTitle?: string }) => void
   onRadio: () => void
+  onFlow: () => void
   radioLoading?: boolean
   onAddToPlaylist: () => void
   /** пока открыт модальный диалог, Esc не должен закрывать плеер */
@@ -331,6 +332,10 @@ export default function NowPlaying(p: Props) {
           <span className="theater-dock-sep" aria-hidden="true" />
 
           <div className="theater-dock-group">
+            <button className="theater-dock-btn" onClick={p.onFlow} title="Течение от этого трека">
+              <IconWave width={17} height={17} />
+              <span>течение</span>
+            </button>
             <button
               className={`theater-dock-btn${p.radioLoading ? ' busy' : ''}`}
               onClick={p.onRadio}

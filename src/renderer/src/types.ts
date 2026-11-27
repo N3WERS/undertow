@@ -179,6 +179,29 @@ export interface OfflineProgress {
   error?: string
 }
 
+export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'error' | 'canceled'
+
+export interface DownloadItem {
+  id: string
+  track: Track
+  status: DownloadStatus
+  received: number
+  total: number
+  percent: number | null
+  bytes?: number
+  error?: string
+  addedAt: number
+  finishedAt?: number
+}
+
+export interface DownloadsSnapshot {
+  items: DownloadItem[]
+  paused: boolean
+  active: number
+  queued: number
+  errors: number
+}
+
 export interface FallbackCandidate {
   videoId: string
   title: string
@@ -283,6 +306,7 @@ export interface PlayerReport {
   title: string | null
   artist: string | null
   source: 'yandex' | 'youtube' | 'local' | 'soundcloud' | null
+  position?: number | null
 }
 
 export interface FlowOptions {
@@ -291,6 +315,8 @@ export interface FlowOptions {
   novelty?: number
   includeSeeds?: string[]
   excludeSeeds?: string[]
+  startArtists?: string[]
+  sourceTitle?: string
 }
 
 export interface FlowRoute {
@@ -334,6 +360,14 @@ export interface UndertowApi {
   offlineRemove(id: string): Promise<boolean>
   offlineClear(): Promise<number>
   offlineReveal(): Promise<void>
+  downloadsList(): Promise<DownloadsSnapshot>
+  downloadsEnqueue(tracks: Track[]): Promise<DownloadsSnapshot>
+  downloadsPause(): Promise<DownloadsSnapshot>
+  downloadsResume(): Promise<DownloadsSnapshot>
+  downloadsRetry(id: string): Promise<DownloadsSnapshot>
+  downloadsRemove(id: string): Promise<DownloadsSnapshot>
+  downloadsClearFinished(): Promise<DownloadsSnapshot>
+  onDownloadsState(cb: (state: DownloadsSnapshot) => void): () => void
   onOfflineProgress(cb: (progress: OfflineProgress) => void): () => void
   queueGet(): Promise<{ tracks: Track[]; index: number; shuffled: boolean; time: number; savedAt: number } | null>
   queueSave(state: { tracks: Track[]; index: number; shuffled: boolean }): Promise<void>
@@ -367,6 +401,8 @@ export interface UndertowApi {
   flowSeed(action: 'include' | 'exclude', name: string): Promise<FlowInfo>
   flowPlayed(track: Track): Promise<void>
   flowSeeds(): Promise<{ name: string; weight: number }[]>
+  flowTracks(): Promise<Track[]>
+  flowDiscoveries(): Promise<{ name: string; coverUrl?: string; at: number }[]>
   artistRadio(ref: { id?: string; name?: string }): Promise<{ title: string; tracks: Track[] }>
   radioMore(ref: { id?: string; name?: string }): Promise<Track[]>
   radioTrack(track: Track): Promise<{ title: string; tracks: Track[] }>
@@ -401,6 +437,14 @@ export interface UndertowApi {
   updateInstall(): Promise<boolean>
   onUpdateState(cb: (state: UpdateState) => void): () => void
   miniState(): Promise<boolean>
+  presenceGet(): Promise<{ enabled: boolean; connected: boolean }>
+  presenceSet(next: { enabled?: boolean }): Promise<{
+    enabled: boolean
+    connected: boolean
+  }>
+  startupGet(): Promise<boolean>
+  startupSet(on: boolean): Promise<boolean>
+  onLink(cb: (url: string) => void): () => void
   setMini(on: boolean): Promise<boolean>
   toggleMini(): Promise<boolean>
   reportPlayer(state: PlayerReport): void

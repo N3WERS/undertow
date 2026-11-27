@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { SavedAlbum, Track } from '../types'
 import TrackList from './TrackList'
-import { IconPlay, IconX } from './Icons'
+import { enqueueDownloads } from '../downloads'
+import { IconPlay, IconSearch, IconX } from './Icons'
 
 interface Props {
   likes: Track[]
@@ -27,9 +28,30 @@ interface Props {
   onAddToQueue?: (track: Track) => void
   onPlayAlbum: (album: SavedAlbum) => void
   onRemoveAlbum: (album: SavedAlbum) => void
+  onToast: (text: string, kind?: 'info' | 'error') => void
 }
 
 type Tab = 'likes' | 'albums' | 'history'
+type Sort = 'default' | 'title' | 'artist' | 'album' | 'duration'
+
+const norm = (value: string): string => value.toLowerCase().replace(/ё/g, 'е').trim()
+
+function sortTracks(list: Track[], sort: Sort): Track[] {
+  if (sort === 'default') return list
+  const collator = new Intl.Collator('ru', { sensitivity: 'base' })
+  const value = (track: Track): string | number => {
+    if (sort === 'duration') return track.durationSec ?? 0
+    if (sort === 'title') return track.title
+    if (sort === 'artist') return track.artist
+    return track.album ?? ''
+  }
+  return [...list].sort((a, b) => {
+    const av = value(a)
+    const bv = value(b)
+    if (typeof av === 'number' && typeof bv === 'number') return av - bv
+    return collator.compare(String(av), String(bv))
+  })
+}
 
 const albumWord = (n: number): string => {
   const mod100 = n % 100
@@ -42,7 +64,73 @@ const albumWord = (n: number): string => {
 
 export default function LibraryView(p: Props) {
   const [tab, setTab] = useState<Tab>('likes')
-  const list = tab === 'likes' ? p.likes : p.history
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<Sort>('default')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selecting, setSelecting] = useState(false)
+  const [anchor, setAnchor] = useState<string | null>(null)
+  const [confirmDupes, setConfirmDupes] = useState(false)
+
+  const source = tab === 'likes' ? p.likes : p.history
+  const filtered = useMemo(() => {
+    const q = norm(query)
+    const result = q
+      ? source.filter((track) => norm(`${track.title} ${track.artist} ${track.album ?? ''}`).includes(q))
+      : source
+    return sortTracks(result, sort)
+  }, [source, query, sort])
+
+  useEffect(() => {
+    setSelected(new Set())
+    setAnchor(null)
+    setConfirmDupes(false)
+    if (tab === 'albums') setSelecting(false)
+  }, [tab, query, sort])
+
+  useEffect(() => {
+    if (!selecting) setSelected(new Set())
+  }, [selecting])
+
+  const selectedTracks = useMemo(
+    () => source.filter((track) => selected.has(track.id)),
+    [source, selected]
+  )
+
+  const duplicates = useMemo(() => {
+    if (tab !== 'likes') return []
+    const groups = new Map<string, Track[]>()
+    for (const track of p.likes) {
+      const key = `${norm(track.title)}|${norm(track.artist)}`
+      const group = groups.get(key)
+      if (group) group.push(track)
+      else groups.set(key, [track])
+    }
+    return [...groups.values()].flatMap((group) => group.slice(1))
+  }, [p.likes, tab])
+
+  const albums = useMemo(() => {
+    const q = norm(query)
+    if (!q) return p.albums
+    return p.albums.filter((album) => norm(`${album.title} ${album.artist}`).includes(q))
+  }, [p.albums, query])
+
+  const select = (track: Track, shiftKey: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (shiftKey && anchor) {
+        const from = filtered.findIndex((item) => item.id === anchor)
+        const to = filtered.findIndex((item) => item.id === track.id)
+        if (from >= 0 && to >= 0) {
+          for (let i = Math.min(from, to); i <= Math.max(from, to); i += 1) next.add(filtered[i].id)
+          return next
+        }
+      }
+      if (next.has(track.id)) next.delete(track.id)
+      else next.add(track.id)
+      return next
+    })
+    setAnchor(track.id)
+  }
 
   return (
     <div className="scroll">
@@ -62,7 +150,7 @@ export default function LibraryView(p: Props) {
             </button>
           )}
           {tab === 'likes' && p.likes.length > 0 && (
-            <button className="play-btn" onClick={() => p.likes[0] && p.onPlay(p.likes[0], p.likes)}>
+            <button className="play-btn" onClick={() => filtered[0] && p.onPlay(filtered[0], filtered)}>
               Слушать всё
             </button>
           )}
@@ -96,15 +184,116 @@ export default function LibraryView(p: Props) {
         </button>
       </div>
 
+      <div className="library-tools">
+        <label className="library-search">
+          <IconSearch width={14} height={14} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Поиск по библиотеке…"
+            aria-label="Поиск по библиотеке"
+          />
+          {query ? (
+            <button className="library-search-clear" onClick={() => setQuery('')} aria-label="Очистить поиск">
+              <IconX width={12} height={12} />
+            </button>
+          ) : null}
+        </label>
+
+        {tab !== 'albums' ? (
+          <select
+            className="library-sort"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as Sort)}
+            aria-label="Сортировка"
+          >
+            <option value="default">Как добавлено</option>
+            <option value="title">По названию</option>
+            <option value="artist">По артисту</option>
+            <option value="album">По альбому</option>
+            <option value="duration">По длительности</option>
+          </select>
+        ) : null}
+
+        {tab !== 'albums' ? (
+          <button
+            className={`library-select${selecting ? ' on' : ''}`}
+            onClick={() => setSelecting((value) => !value)}
+            aria-pressed={selecting}
+          >
+            {selecting ? 'Готово' : 'Выбрать'}
+          </button>
+        ) : null}
+
+        {tab === 'likes' && duplicates.length > 0 ? (
+          <button
+            className={`library-dupes${confirmDupes ? ' confirm' : ''}`}
+            onClick={() => {
+              if (!confirmDupes) {
+                setConfirmDupes(true)
+                return
+              }
+              for (const track of duplicates) p.onLike(track)
+              p.onToast(`Убрал дублей: ${duplicates.length}`)
+              setConfirmDupes(false)
+            }}
+            onBlur={() => setConfirmDupes(false)}
+            title="Убрать повторяющиеся треки, оставив первый"
+          >
+            {confirmDupes ? `Подтвердить: убрать ${duplicates.length}` : `Дубли: ${duplicates.length}`}
+          </button>
+        ) : null}
+
+        {selected.size > 0 ? (
+          <div className="library-selection">
+            <b>{selected.size} выбрано</b>
+            <button
+              onClick={() => {
+                const allLiked = selectedTracks.every((track) => p.likedIds.has(track.id))
+                for (const track of selectedTracks) {
+                  if (allLiked || !p.likedIds.has(track.id)) p.onLike(track)
+                }
+                p.onToast(allLiked ? 'Убрал из «Мне нравится»' : 'Добавил в «Мне нравится»')
+              }}
+            >
+              {selectedTracks.every((track) => p.likedIds.has(track.id)) ? 'Убрать лайки' : 'В лайки'}
+            </button>
+            <button
+              onClick={() => {
+                for (const track of selectedTracks) p.onAddToQueue?.(track)
+                p.onToast(`В очередь: ${selectedTracks.length}`)
+              }}
+            >
+              В очередь
+            </button>
+            <button
+              onClick={() => {
+                void enqueueDownloads(selectedTracks.filter((track) => track.playable))
+                p.onToast(`Сохраняю локально: ${selectedTracks.length}`)
+              }}
+            >
+              Скачать
+            </button>
+            <button className="library-selection-clear" onClick={() => setSelected(new Set())}>
+              Снять
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {selecting && selected.size === 0 ? (
+        <div className="library-select-hint">Нажмите на треки, чтобы выбрать их. Повторное нажатие снимает выбор.</div>
+      ) : null}
+
       {tab === 'albums' ? (
-        p.albums.length === 0 ? (
+        albums.length === 0 ? (
           <div className="empty">
             <b>Пока нет сохранённых альбомов</b>
             Открой страницу альбома и нажми «Сохранить альбом» — он появится здесь для быстрого доступа.
           </div>
         ) : (
           <div className="saved-albums">
-            {p.albums.map((a) => (
+            {albums.map((a) => (
               <div className="saved-album-card" key={a.id}>
                 <button
                   className="saved-album-open"
@@ -140,7 +329,7 @@ export default function LibraryView(p: Props) {
             ))}
           </div>
         )
-      ) : list.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="empty">
           <b>{tab === 'likes' ? 'Пока пусто' : 'Ещё ничего не слушал'}</b>
           {tab === 'likes'
@@ -151,7 +340,7 @@ export default function LibraryView(p: Props) {
         </div>
       ) : (
         <TrackList
-          tracks={list}
+          tracks={filtered}
           currentId={p.currentId}
           playing={p.playing}
           onPlay={p.onPlay}
@@ -165,6 +354,8 @@ export default function LibraryView(p: Props) {
           onOpenAlbum={p.onOpenAlbum}
           onAddToPlaylist={p.onAddToPlaylist}
           onSimilar={p.onSimilar}
+          selection={selecting ? selected : undefined}
+          onSelect={selecting ? select : undefined}
           showSource
         />
       )}

@@ -38,6 +38,9 @@ interface Props {
   onSimilar?: (track: Track) => void
   /** нумерованный список: номер всегда виден (чарт) */
   ranked?: boolean
+  /** выбранные треки для массовых действий */
+  selection?: Set<string>
+  onSelect?: (track: Track, shiftKey: boolean) => void
 }
 
 function sourcePill(track: Track): { cls: string; label: string; title: string } {
@@ -82,13 +85,15 @@ export default function TrackList({
   onRemoveTrack,
   onReorder,
   onSimilar,
-  ranked
+  ranked,
+  selection,
+  onSelect
 }: Props) {
   const list = limit ? tracks.slice(0, limit) : tracks
   const [dragging, setDragging] = useState<number | null>(null)
   const offline = useOffline()
   return (
-    <div className={`tracks${ranked ? ' ranked' : ''}`}>
+    <div className={`tracks${ranked ? ' ranked' : ''}${onSelect ? ' selectable' : ''}`}>
       {list.map((t, i) => {
         const isCurrent = t.id === currentId
         const liked = likedIds?.has(t.id) ?? false
@@ -106,8 +111,11 @@ export default function TrackList({
             tabIndex={0}
             className={`track${ranked ? ' ranked' : ''}${isCurrent ? ' playing' : ''}${
               t.playable ? '' : ' locked'
-            }${dragging === i ? ' dragging' : ''}`}
-            onClick={activate}
+            }${dragging === i ? ' dragging' : ''}${selection?.has(t.id) ? ' selected' : ''}`}
+            onClick={(e) => {
+              if (onSelect) onSelect(t, e.shiftKey)
+              else activate()
+            }}
             onMouseEnter={() => onHover?.(t)}
             draggable={Boolean(onReorder)}
             onDragStart={onReorder ? () => setDragging(i) : undefined}
@@ -131,10 +139,25 @@ export default function TrackList({
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
-                activate()
+                if (onSelect) onSelect(t, e.shiftKey)
+                else activate()
               }
             }}
           >
+            {onSelect ? (
+              <button
+                className={`track-check${selection?.has(t.id) ? ' on' : ''}`}
+                aria-label={selection?.has(t.id) ? 'Убрать из выбранных' : 'Выбрать трек'}
+                aria-pressed={selection?.has(t.id) ?? false}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSelect(t, e.shiftKey)
+                }}
+              >
+                {selection?.has(t.id) ? <IconCheck width={11} height={11} /> : null}
+              </button>
+            ) : null}
+
             <span className="track-idx">
               {isCurrent ? (
                 <span className={`eq${playing ? '' : ' paused'}`}>

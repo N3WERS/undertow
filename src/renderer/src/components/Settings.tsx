@@ -48,6 +48,12 @@ export default function Settings({
   const [dpiBusy, setDpiBusy] = useState(false)
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [updateBusy, setUpdateBusy] = useState(false)
+  const [startup, setStartup] = useState<boolean | null>(null)
+  const [presence, setPresence] = useState<{ enabled: boolean; connected: boolean }>({
+    enabled: false,
+    connected: false
+  })
+  const [presenceBusy, setPresenceBusy] = useState(false)
   const yn = state?.yandex
   const eqPreset = presetFor(eq.gains)
 
@@ -56,6 +62,26 @@ export default function Settings({
     gains[i] = value
     onEq({ ...eq, enabled: true, gains })
   }
+
+  useEffect(() => {
+    let alive = true
+    void window.undertow
+      .startupGet()
+      .then((on) => {
+        if (alive) setStartup(on)
+      })
+      .catch(() => undefined)
+    void window.undertow
+      .presenceGet()
+      .then((value) => {
+        if (!alive) return
+        setPresence(value)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -529,6 +555,83 @@ export default function Settings({
           <button className="link-btn" onClick={() => void refreshDpi()} disabled={dpiBusy}>
             Проверить
           </button>
+        </div>
+      </section>
+
+      <section className="panel surface-hero surface-deep">
+        <div className="panel-head">
+          <div>
+            <h2>Система</h2>
+            <p>
+              Undertow умеет запускаться вместе с Windows и открывать «Течение», поиск или мини-плеер
+              из меню Пуск и панели задач.
+            </p>
+          </div>
+          <span className={`pill ${startup ? 'ok' : 'off'}`}>{startup ? 'включено' : 'выключено'}</span>
+        </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={Boolean(startup)}
+            onChange={(e) => {
+              const next = e.target.checked
+              void window.undertow
+                .startupSet(next)
+                .then((on) => {
+                  setStartup(on)
+                  onToast(on ? 'Автозапуск включён' : 'Автозапуск выключен')
+                })
+                .catch((e: unknown) => onToast(e instanceof Error ? e.message : String(e), 'error'))
+            }}
+          />
+          <span className="check-box" aria-hidden="true" />
+          <span className="check-copy">
+            <b>Запускать вместе с Windows</b>
+            <em>Приложение стартует свёрнутым в трей, без окна поверх рабочего стола.</em>
+          </span>
+        </label>
+        <div className="presence-config">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={presence.enabled}
+              disabled={presenceBusy}
+              onChange={(e) => {
+                const next = e.target.checked
+                setPresenceBusy(true)
+                void window.undertow
+                  .presenceSet({ enabled: next })
+                  .then((value) => {
+                    setPresence(value)
+                    onToast(
+                      value.connected
+                        ? 'Discord Rich Presence подключён'
+                        : next
+                          ? 'Включено, но Discord не запущен или RPC недоступен'
+                          : 'Discord Rich Presence выключен'
+                    )
+                  })
+                  .catch((e: unknown) => onToast(e instanceof Error ? e.message : String(e), 'error'))
+                  .finally(() => setPresenceBusy(false))
+              }}
+            />
+            <span className="check-box" aria-hidden="true" />
+            <span className="check-copy">
+              <b>Discord Rich Presence</b>
+              <em>Показывать текущий трек в профиле Discord. Client ID уже встроен в приложение.</em>
+            </span>
+          </label>
+        </div>
+
+        <div className="status-list">
+          <div>
+            <span>Ссылки</span>
+            <b>undertow://flow · /search · /mini</b>
+          </div>
+          <div>
+            <span>Панель задач</span>
+            <b>prev · play/pause · next</b>
+          </div>
         </div>
       </section>
 

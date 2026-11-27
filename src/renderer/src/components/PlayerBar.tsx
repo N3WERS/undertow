@@ -62,6 +62,7 @@ interface Props {
   /** слова реально нашлись — иначе кнопку не показываем */
   hasLyrics: boolean
   onRadio: () => void
+  onFlow: () => void
   radioLoading?: boolean
   onAddToPlaylist: () => void
   /** RMS текущего трека 0…1 — «дыхание» подсветки */
@@ -557,6 +558,15 @@ export default function PlayerBar(p: Props) {
             ) : null}
           </div>
         ) : null}
+          <button
+            className="tool-btn flow-btn"
+            onClick={p.onFlow}
+            disabled={!p.track}
+            title="Течение от этого трека"
+            aria-label="Течение от этого трека"
+          >
+            <IconWave width={14} height={14} />
+          </button>
           <button
             className={`tool-btn radio-btn${p.radioLoading ? ' busy' : ''}`}
             onClick={p.onRadio}

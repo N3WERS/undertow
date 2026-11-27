@@ -3,6 +3,7 @@ import Sidebar, { type View } from './components/Sidebar'
 import HomeView from './components/Home'
 import FlowView from './components/FlowView'
 import SearchViewBase from './components/SearchView'
+import CommandPalette from './components/CommandPalette'
 import Settings from './components/Settings'
 import LibraryView from './components/LibraryView'
 import SavedView from './components/SavedView'
@@ -101,6 +102,7 @@ export default function App() {
   const [repeat, setRepeat] = useState<RepeatMode>('off')
   const [mini, setMini] = useState(false)
   const [closeAsk, setCloseAsk] = useState(false)
+  const [palette, setPalette] = useState<'all' | 'library' | null>(null)
   const [theaterOpen, setTheaterOpen] = useState(false)
   const [resolving, setResolving] = useState(false)
   useEffect(() => {
@@ -733,6 +735,7 @@ export default function App() {
   const flowRef = useRef(false)
   const flowBusy = useRef(false)
   const [flowActive, setFlowActive] = useState(false)
+  const [flowSaving, setFlowSaving] = useState(false)
   const [releases, setReleases] = useState<{
     loading: boolean
     items: ReleaseItem[]
@@ -865,6 +868,47 @@ export default function App() {
     }
   }, [playTrack, toast])
 
+  const startFlowFrom = useCallback(
+    (tracks: Track[], title: string) => {
+      const artists = [...new Set(tracks.map((t) => t.artist?.split(',')[0]?.trim()).filter(Boolean))].slice(0, 6)
+      if (!artists.length) {
+        toast('Не нашёл артистов для потока', 'error')
+        return
+      }
+      setView('flow')
+      void startFlow({ startArtists: artists, sourceTitle: title })
+    },
+    [startFlow, toast]
+  )
+
+  const startFlowFromTrack = useCallback(
+    (track: Track) => {
+      if (!track.artist) {
+        toast('У трека не указан артист', 'error')
+        return
+      }
+      setView('flow')
+      void startFlow({ startArtists: [track.artist], sourceTitle: track.title })
+    },
+    [startFlow, toast]
+  )
+
+  const saveFlow = useCallback(async () => {
+    setFlowSaving(true)
+    try {
+      const tracks = await window.undertow.flowTracks()
+      if (!tracks.length) throw new Error('В потоке пока нет треков')
+      const date = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+      const playlist = await window.undertow.playlistCreate(`Течение · ${date}`)
+      const added = await window.undertow.playlistAdd(playlist.id, tracks)
+      toast(`Поток сохранён в плейлист: ${added} треков`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setFlowSaving(false)
+    }
+  }, [toast])
+
   const flowFeedback = useCallback(
     async (action: 'more' | 'less' | 'skipArtist', t: Track) => {
       try {
@@ -955,9 +999,91 @@ export default function App() {
       playing: snap.playing,
       title: track?.title ?? null,
       artist: track?.artist ?? null,
-      source
+      source,
+      position: snap.time
     })
   }, [snap.playing, track?.id, track?.title, track?.artist, source])
+
+  // Системный оверлей Windows и аппаратные медиа-клавиши.
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    if (!track) {
+      navigator.mediaSession.metadata = null
+      navigator.mediaSession.playbackState = 'none'
+      return
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist,
+      album: track.album ?? '',
+      artwork: track.coverUrl ? [{ src: track.coverUrl, sizes: '512x512', type: 'image/jpeg' }] : []
+    })
+    navigator.mediaSession.playbackState = snap.playing ? 'playing' : 'paused'
+    const duration = snap.duration > 0 ? snap.duration : (track.durationSec ?? 0)
+    if (duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: 1,
+          position: Math.max(0, Math.min(snap.time, duration))
+        })
+      } catch {
+        /* позиция может быть ещё не готова */
+      }
+    }
+  }, [track, snap.playing, snap.time, snap.duration])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const set = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler)
+      } catch {
+        /* действие не поддерживается */
+      }
+    }
+    set('play', () => toggle())
+    set('pause', () => toggle())
+    set('previoustrack', () => go(-1))
+    set('nexttrack', () => go(1))
+    set('seekto', (details) => {
+      if (details.seekTime != null) engineRef.current?.seek(details.seekTime)
+    })
+    return () => {
+      set('play', null)
+      set('pause', null)
+      set('previoustrack', null)
+      set('nexttrack', null)
+      set('seekto', null)
+    }
+  }, [toggle, go])
+
+  // Ссылки undertow:// из проводника, Jump List и ярлыков.
+  useEffect(
+    () =>
+      window.undertow.onLink((raw) => {
+        try {
+          const url = new URL(raw)
+          const action = url.hostname || url.pathname.replace(/^\//, '')
+          if (action === 'flow') setView('flow')
+          else if (action === 'search') setView('search')
+          else if (action === 'mini') void window.undertow.setMini(true)
+          else if (action === 'album') {
+            const id = url.searchParams.get('id') ?? undefined
+            const title = url.searchParams.get('title') ?? 'Альбом'
+            if (id) void openAlbum({ id, title })
+          } else if (action === 'artist') {
+            const id = url.searchParams.get('id') ?? undefined
+            const name = url.searchParams.get('name') ?? ''
+            if (id || name) void openArtist({ id, name })
+          } else if (action === 'library') setView('library')
+          else if (action === 'playlists') setView('playlists')
+        } catch {
+          /* некорректная ссылка игнорируется */
+        }
+      }),
+    [openAlbum, openArtist]
+  )
 
   /* ------------------- подмена на YouTube: прогрев и варианты ------------------ */
 
@@ -1095,6 +1221,16 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPalette('all')
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setPalette('library')
+        return
+      }
       if (e.code === 'Space') {
         e.preventDefault()
         toggle()
@@ -1253,6 +1389,7 @@ export default function App() {
               onOpenAlbum={openAlbum}
               onOpenArtist={openArtist}
               onRadio={() => void startRadio({ id: browse.id, name: browse.name ?? browse.title })}
+              onFlow={startFlowFrom}
               radioLoading={radioLoading}
               onAddToPlaylist={setPickerTrack}
               onSimilar={(t) => void startSimilar(t)}
@@ -1314,6 +1451,8 @@ export default function App() {
               onToggle={toggle}
               onArtistRadio={(name) => void startRadio({ name })}
               onFeedback={flowFeedback}
+              onSave={() => void saveFlow()}
+              saving={flowSaving}
               onToast={toast}
               radioLoading={radioLoading}
               onHover={hoverPrewarm}
@@ -1368,6 +1507,7 @@ export default function App() {
               onAddToQueue={addToQueue}
               onAddToPlaylist={setPickerTrack}
               onSimilar={(t) => void startSimilar(t)}
+              onFlow={startFlowFrom}
               onOpenArtist={openArtist}
               onOpenAlbum={openAlbum}
               onToast={toast}
@@ -1425,6 +1565,7 @@ export default function App() {
               }}
               onPlayAlbum={playSavedAlbum}
               onRemoveAlbum={(album) => void removeSavedAlbum(album)}
+              onToast={toast}
             />
           )}
         </main>
@@ -1497,6 +1638,7 @@ export default function App() {
         }}
         hasLyrics={hasLyrics}
         onRadio={() => track && void startSimilar(track)}
+        onFlow={() => track && startFlowFromTrack(track)}
         radioLoading={radioLoading}
         onAddToPlaylist={() => track && setPickerTrack(track)}
         onExpand={() => {
@@ -1511,6 +1653,24 @@ export default function App() {
           setSettingsFocus(null)
           setView('search')
         }}
+      />
+
+      <CommandPalette
+        open={palette !== null}
+        mode={palette ?? 'all'}
+        onClose={() => setPalette(null)}
+        onNavigate={(v) => {
+          closeBrowse()
+          setView(v)
+        }}
+        onPlay={playTrack}
+        onArtist={(name) => void openArtist({ name })}
+        onAlbum={(album) => void openAlbum(album)}
+        onPlaylist={(id, title) => void openPlaylist({ id, title })}
+        onToggle={toggle}
+        onNext={() => go(1)}
+        onPrev={() => go(-1)}
+        onMini={() => void window.undertow.setMini(true).then(setMini)}
       />
 
       {theaterOpen && track ? (
@@ -1587,6 +1747,7 @@ export default function App() {
           onOpenArtist={openArtist}
           onOpenAlbum={openAlbum}
           onRadio={() => void startSimilar(track)}
+          onFlow={() => startFlowFromTrack(track)}
           radioLoading={radioLoading}
           onAddToPlaylist={() => setPickerTrack(track)}
           escBlocked={Boolean(pickerTrack)}
