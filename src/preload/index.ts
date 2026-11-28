@@ -83,6 +83,7 @@ const api = {
   addHistory: (track: unknown) => ipcRenderer.invoke('history:add', track),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
   importYandexLikes: () => ipcRenderer.invoke('likes:import'),
+  importYandexToYoutube: (limit?: number) => ipcRenderer.invoke('likes:import-youtube', limit),
   fallbackList: (track: unknown) => ipcRenderer.invoke('fallback:list', track),
   fallbackPick: (track: unknown, candidate: unknown) => ipcRenderer.invoke('fallback:pick', track, candidate),
   fallbackUnpin: (track: unknown) => ipcRenderer.invoke('fallback:unpin', track),

@@ -34,6 +34,8 @@ export interface LibrarySnapshot {
   history: Track[]
   /** id трека → когда играл последний раз (мс). Нужно подборкам на главной. */
   playedAt: Record<string, number>
+  /** id трека → когда его лайкнули (мс). Нужно якорям «Течения». */
+  likedAt: Record<string, number>
   stats: { likes: number; history: number; updatedAt: number | null }
 }
 
@@ -238,6 +240,7 @@ export function snapshot(): LibrarySnapshot {
     likes: data.likes.map((e) => e.track),
     history: data.history.map((e) => e.track),
     playedAt: Object.fromEntries(data.history.map((e) => [e.track.id, e.playedAt])),
+    likedAt: Object.fromEntries(data.likes.map((e) => [e.track.id, e.likedAt])),
     stats: { likes: data.likes.length, history: data.history.length, updatedAt }
   }
 }

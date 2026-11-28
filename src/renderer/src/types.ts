@@ -133,6 +133,7 @@ export interface DpiStatus {
 export interface LibrarySnapshot {
   likes: Track[]
   history: Track[]
+  likedAt?: Record<string, number>
   stats: { likes: number; history: number; updatedAt: number | null }
 }
 
@@ -297,6 +298,17 @@ export interface ImportResult {
   imported: number
   total: number
   localTotal: number
+  searched: number
+  skipped: number
+  remaining: number
+}
+
+export interface YoutubeImportResult {
+  imported: number
+  searched: number
+  skipped: number
+  remaining: number
+  total: number
 }
 
 export type PlayerCommand = 'toggle' | 'next' | 'prev'
@@ -309,6 +321,8 @@ export interface PlayerReport {
   position?: number | null
 }
 
+export type FlowTier = 'hit' | 'recent' | 'deep'
+
 export interface FlowOptions {
   genres?: string[]
   excludeGenres?: string[]
@@ -316,6 +330,7 @@ export interface FlowOptions {
   includeSeeds?: string[]
   excludeSeeds?: string[]
   startArtists?: string[]
+  startTracks?: Track[]
   sourceTitle?: string
 }
 
@@ -323,6 +338,16 @@ export interface FlowRoute {
   seed: string
   via?: string
   library?: boolean
+  /** трек-якорь, если рекомендация пришла из Up next */
+  anchor?: string
+  /** 1 — прямо от якоря, 2 — второй шаг по трек-графу */
+  hop?: number
+  tier?: FlowTier
+}
+
+export interface FlowAnchor {
+  track: Track
+  role: 'like' | 'top' | 'middle' | 'history' | 'unexpected' | 'manual'
 }
 
 export interface FlowStats {
@@ -337,6 +362,7 @@ export interface FlowInfo {
   genres: string[]
   excludeGenres: string[]
   novelty: number
+  anchors: FlowAnchor[]
   routes: Record<string, FlowRoute>
   stats: FlowStats
 }
@@ -411,6 +437,7 @@ export interface UndertowApi {
   addHistory(track: Track): Promise<void>
   clearHistory(): Promise<void>
   importYandexLikes(): Promise<ImportResult>
+  importYandexToYoutube(limit?: number): Promise<YoutubeImportResult>
   versions(track: Track): Promise<TrackVersion[]>
   releases(force?: boolean): Promise<{ items: ReleaseItem[]; updatedAt: number; artists: number }>
   fallbackList(track: Track): Promise<{ pinned: boolean; items: FallbackCandidate[] }>

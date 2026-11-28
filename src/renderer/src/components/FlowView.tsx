@@ -1,7 +1,7 @@
-import { useEffect, useState, type CSSProperties } from 'react'
-import type { FlowInfo, FlowOptions, FlowRoute, FlowStats, Track } from '../types'
+import { useEffect, useState } from 'react'
+import type { FlowAnchor, FlowInfo, FlowOptions, FlowRoute, FlowStats, Track } from '../types'
 import { fmtTime } from './TrackList'
-import { IconCheck, IconPause, IconPlay, IconPlus, IconRefresh, IconWave, IconX } from './Icons'
+import { IconPause, IconPlay, IconPlus, IconRefresh, IconWave } from './Icons'
 import TopoField from './TopoField'
 
 interface Props {
@@ -18,24 +18,32 @@ interface Props {
   onSave?: () => void
   saving?: boolean
   onToast?: (text: string, kind?: 'info' | 'error') => void
-  radioLoading?: boolean
   onHover?: (track: Track) => void
 }
 
 interface Prefs {
   genres: string[]
   excludeGenres: string[]
-  novelty: number
-  includeSeeds: string[]
-  excludeSeeds: string[]
 }
 
 const DEFAULT_PREFS: Prefs = {
   genres: [],
-  excludeGenres: [],
-  novelty: 55,
-  includeSeeds: [],
-  excludeSeeds: []
+  excludeGenres: []
+}
+
+const TIER_LABEL: Record<string, string> = {
+  hit: 'хит',
+  recent: 'новинка',
+  deep: 'глубина'
+}
+
+const ROLE_LABEL: Record<FlowAnchor['role'], string> = {
+  like: 'недавний',
+  top: 'частый',
+  middle: 'середина',
+  history: 'история',
+  unexpected: 'неожиданный',
+  manual: 'от трека'
 }
 
 const PREFS_KEY = 'undertow.flowOptions'
@@ -47,21 +55,11 @@ function loadPrefs(): Prefs {
     const parsed = JSON.parse(raw) as Partial<Prefs>
     return {
       genres: Array.isArray(parsed.genres) ? parsed.genres.filter(Boolean) : [],
-      excludeGenres: Array.isArray(parsed.excludeGenres) ? parsed.excludeGenres.filter(Boolean) : [],
-      novelty: Number.isFinite(parsed.novelty) ? Math.max(0, Math.min(100, Number(parsed.novelty))) : 55,
-      includeSeeds: Array.isArray(parsed.includeSeeds) ? parsed.includeSeeds.filter(Boolean) : [],
-      excludeSeeds: Array.isArray(parsed.excludeSeeds) ? parsed.excludeSeeds.filter(Boolean) : []
+      excludeGenres: Array.isArray(parsed.excludeGenres) ? parsed.excludeGenres.filter(Boolean) : []
     }
   } catch {
     return { ...DEFAULT_PREFS }
   }
-}
-
-/** Аватар-заглушка для артиста без обложки: буква на градиенте по имени. */
-function initialGradient(name: string): string {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360
-  return `linear-gradient(140deg, hsl(${h} 62% 32%), hsl(${(h + 48) % 360} 58% 22%))`
 }
 
 function plural(n: number, one: string, few: string, many: string): string {
@@ -72,15 +70,6 @@ function plural(n: number, one: string, few: string, many: string): string {
   return many
 }
 
-function unique(list: string[]): string[] {
-  const seen = new Set<string>()
-  return list.filter((x) => {
-    const key = x.trim().toLowerCase()
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
 
 export default function FlowView({
   queue,
@@ -96,22 +85,17 @@ export default function FlowView({
   onSave,
   saving,
   onToast,
-  radioLoading,
   onHover
 }: Props) {
-  const [seeds, setSeeds] = useState<{ name: string; weight: number }[]>([])
-  const [seedRefs, setSeedRefs] = useState<{ id?: string; name: string; coverUrl?: string; weight?: number }[]>([])
   const [genreList, setGenreList] = useState<{ id: string; name: string; artists: number }[]>([])
   const [genresLoading, setGenresLoading] = useState(true)
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
   const [genreMode, setGenreMode] = useState<'include' | 'exclude'>('include')
-  const [seedQuery, setSeedQuery] = useState('')
-  const [seedResults, setSeedResults] = useState<{ id?: string; name: string; coverUrl?: string }[]>([])
-  const [seedSearchBusy, setSeedSearchBusy] = useState(false)
-  const [seedBusy, setSeedBusy] = useState<string | null>(null)
   const [feedbackBusy, setFeedbackBusy] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
   const [routes, setRoutes] = useState<Record<string, FlowRoute>>({})
   const [stats, setStats] = useState<FlowStats | null>(null)
+  const [anchors, setAnchors] = useState<FlowAnchor[]>([])
   const [discoveries, setDiscoveries] = useState<{ name: string; coverUrl?: string; at: number }[]>([])
 
   const alive = active && playing
@@ -135,32 +119,29 @@ export default function FlowView({
 
   const applyInfo = (info: FlowInfo | null | undefined) => {
     if (!info) return
-    setSeedRefs(info.seeds ?? [])
     setRoutes(info.routes ?? {})
     setStats(info.stats ?? null)
+    setAnchors(info.anchors ?? [])
   }
 
   useEffect(() => {
     let aliveFetch = true
     void (async () => {
       try {
-        const [list, flow, genres] = await Promise.all([
-          window.undertow.flowSeeds(),
+        const [flow, genres] = await Promise.all([
           window.undertow.flowInfo(),
           window.undertow.flowGenres()
         ])
         if (!aliveFetch) return
-        setSeeds(list)
-        setSeedRefs(flow?.seeds ?? [])
         setGenreList(genres?.items ?? [])
         setRoutes(flow?.routes ?? {})
         setStats(flow?.stats ?? null)
+        setAnchors(flow?.anchors ?? [])
         if (flow?.active) {
           setPrefs((prev) => ({
             ...prev,
             genres: flow?.genres ?? [],
-            excludeGenres: flow?.excludeGenres ?? [],
-            novelty: flow?.novelty ?? prev.novelty
+            excludeGenres: flow?.excludeGenres ?? []
           }))
         }
       } catch {
@@ -227,94 +208,14 @@ export default function FlowView({
     })
   }
 
-  const setNovelty = (value: number) => {
-    setPrefs((prev) => ({ ...prev, novelty: value }))
-    if (active) {
-      void window.undertow
-        .flowNovelty(value)
-        .then((info) => setStats(info.stats))
-        .catch(() => undefined)
-    }
-  }
+
 
   const start = () => {
     const options: FlowOptions = {
       genres: prefs.genres,
-      excludeGenres: prefs.excludeGenres,
-      novelty: prefs.novelty,
-      includeSeeds: prefs.includeSeeds,
-      excludeSeeds: prefs.excludeSeeds
+      excludeGenres: prefs.excludeGenres
     }
     onStart(options)
-  }
-
-  const changeSeed = async (action: 'include' | 'exclude', name: string) => {
-    const key = name.trim()
-    if (!key) return
-    setSeedBusy(key)
-    setPrefs((prev) =>
-      action === 'include'
-        ? {
-            ...prev,
-            includeSeeds: unique([...prev.includeSeeds, key]),
-            excludeSeeds: prev.excludeSeeds.filter((x) => x.toLowerCase() !== key.toLowerCase())
-          }
-        : {
-            ...prev,
-            includeSeeds: prev.includeSeeds.filter((x) => x.toLowerCase() !== key.toLowerCase()),
-            excludeSeeds: unique([...prev.excludeSeeds, key])
-          }
-    )
-    try {
-      if (active) {
-        const info = await window.undertow.flowSeed(action, key)
-        applyInfo(info)
-      }
-      if (action === 'include') {
-        setSeedResults([])
-        setSeedQuery('')
-      }
-      onToast?.(action === 'include' ? `${key} закреплён в течении` : `${key} исключён из течения`)
-    } catch (e) {
-      onToast?.(e instanceof Error ? e.message : String(e), 'error')
-    } finally {
-      setSeedBusy(null)
-    }
-  }
-
-  const unpinSeed = (name: string) => {
-    setPrefs((prev) => ({
-      ...prev,
-      includeSeeds: prev.includeSeeds.filter((x) => x.toLowerCase() !== name.toLowerCase())
-    }))
-  }
-
-  const restoreExcluded = async () => {
-    const names = [...prefs.excludeSeeds]
-    setPrefs((prev) => ({ ...prev, excludeSeeds: [] }))
-    if (!active || !names.length) return
-    try {
-      let info: FlowInfo | null = null
-      for (const name of names) info = await window.undertow.flowSeed('include', name)
-      applyInfo(info)
-      onToast?.('Артисты возвращены в течение')
-    } catch (e) {
-      onToast?.(e instanceof Error ? e.message : String(e), 'error')
-    }
-  }
-
-  const searchSeeds = async () => {
-    const q = seedQuery.trim()
-    if (q.length < 2 || seedSearchBusy) return
-    setSeedSearchBusy(true)
-    try {
-      const res = await window.undertow.searchAll(q)
-      setSeedResults((res.artists ?? []).slice(0, 6).map((a) => ({ id: a.id, name: a.name, coverUrl: a.coverUrl })))
-    } catch (e) {
-      onToast?.(e instanceof Error ? e.message : String(e), 'error')
-    } finally {
-      setSeedSearchBusy(false)
-    }
   }
 
   const blockForever = async () => {
@@ -345,26 +246,7 @@ export default function FlowView({
     }
   }
 
-  const seedRows = (seedRefs.length ? seedRefs : seeds).filter(
-    (s) => !prefs.excludeSeeds.some((x) => x.toLowerCase() === s.name.toLowerCase())
-  )
-  const existingSeedNames = new Set(seedRows.map((s) => s.name.toLowerCase()))
-  const extraSeeds = prefs.includeSeeds
-    .filter((name) => !existingSeedNames.has(name.toLowerCase()))
-    .map((name) => ({ name, weight: 0, coverUrl: undefined, id: undefined }))
-  const allSeedRows = [...seedRows, ...extraSeeds]
-  const maxSeedWeight = Math.max(1, ...allSeedRows.map((s) => s.weight ?? 0))
   const statsMinutes = stats ? Math.floor(stats.seconds / 60) : 0
-  const routeAvatar = (name: string) => {
-    const ref = seedRefs.find((r) => r.name.toLowerCase() === name.toLowerCase())
-    return ref?.coverUrl ? (
-      <img className="flow-route-avatar" src={ref.coverUrl} alt="" loading="lazy" />
-    ) : (
-      <span className="flow-route-avatar letter" style={{ background: initialGradient(name) }}>
-        {name.slice(0, 1).toUpperCase()}
-      </span>
-    )
-  }
   const genreName = prefs.genres.length
     ? prefs.genres.map((id) => genreList.find((g) => g.id === id)?.name ?? id).join(', ')
     : undefined
@@ -382,8 +264,8 @@ export default function FlowView({
           <span className="flow-kicker">поток без конца</span>
           <h1 className="flow-title">Течение</h1>
           <p className="flow-lead">
-            Бесконечный поток по вашей библиотеке: любимые артисты, похожие на них
-            и редкие треки из лайков. Дальше очередь пополняется сама.
+            Двенадцать треков-якорей из вашей библиотеки, похожие на них треки
+            и новые артисты. Дальше очередь пополняется сама.
           </p>
 
           <div className="flow-actions flow-actions-main">
@@ -437,16 +319,20 @@ export default function FlowView({
                 ? `жанры: ${prefs.genres.length}`
                 : prefs.excludeGenres.length
                   ? `исключено жанров: ${prefs.excludeGenres.length}`
-                  : 'все жанры'}{' '}
-              · {prefs.novelty}% новых артистов
+                  : 'все жанры'}
             </span>
             <button
-              onClick={() =>
-                document.getElementById('flow-setup')?.scrollIntoView({
-                  behavior: 'smooth',
-                  block: 'center'
-                })
-              }
+              onClick={() => {
+                setSetupOpen(true)
+                window.setTimeout(
+                  () =>
+                    document.getElementById('flow-setup')?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                    }),
+                  40
+                )
+              }}
             >
               {active ? 'изменить настройки' : 'настроить поток'}
             </button>
@@ -470,6 +356,38 @@ export default function FlowView({
           ) : null}
         </div>
       </section>
+
+      {active && anchors.length ? (
+        <section className="flow-anchors fade-up" aria-label="Треки-якоря потока">
+          <div className="flow-anchors-head">
+            <b>Двенадцать якорей</b>
+            <span>от этих треков строится поток</span>
+          </div>
+          <div className="flow-anchors-row">
+            {anchors.slice(0, 12).map((anchor) => (
+              <button
+                key={`${anchor.track.id}-${anchor.role}`}
+                className="flow-anchor"
+                onClick={() => onArtistRadio(anchor.track.artist)}
+                title={`Радио ${anchor.track.artist}`}
+              >
+                <span className="flow-anchor-cover">
+                  {anchor.track.coverUrl ? (
+                    <img src={anchor.track.coverUrl} alt="" loading="lazy" />
+                  ) : (
+                    <i>{anchor.track.artist.slice(0, 1).toUpperCase()}</i>
+                  )}
+                </span>
+                <span className="flow-anchor-text">
+                  <b>{anchor.track.title}</b>
+                  <i>{anchor.track.artist}</i>
+                </span>
+                <span className={`flow-anchor-role role-${anchor.role}`}>{ROLE_LABEL[anchor.role]}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {active && current ? (
         <>
@@ -501,42 +419,28 @@ export default function FlowView({
                       </span>
                       <span>из вашей библиотеки</span>
                     </>
-                  ) : (
+                  ) : route.anchor ? (
                     <>
-                      <span className="flow-route-node">
-                        {routeAvatar(route.seed)}
-                        <span>{route.seed}</span>
-                      </span>
-                      {route.via && route.via.toLowerCase() !== route.seed.toLowerCase() ? (
-                        <>
-                          <i className="flow-route-arrow">→</i>
-                          <span className="flow-route-node">
-                            {routeAvatar(route.via)}
-                            <span>{route.via}</span>
-                          </span>
-                        </>
-                      ) : null}
-                      <i className="flow-route-arrow">→</i>
-                      <span className="flow-route-icon" title="этот трек">
+                      <span className="flow-route-label">похоже на</span>
+                      <span className="flow-route-track">«{route.anchor}»</span>
+                      <span className="flow-route-icon" title="трек-якорь">
                         ♪
                       </span>
                     </>
+                  ) : (
+                    <span className="flow-route-track">{route.seed}</span>
                   )}
+                  {route.tier ? (
+                    <span className={`flow-tier flow-tier-${route.tier}`}>{TIER_LABEL[route.tier]}</span>
+                  ) : null}
                 </div>
               ) : null}
             </div>
             <div className="flow-now-controls">
               <div className="flow-feedback-head">
-                Подстроить поток <span>только на эту сессию</span>
+                Подстроить поток <span>запоминается между запусками</span>
               </div>
               <div className="flow-feedback">
-                <button
-                  disabled={feedbackBusy}
-                  onClick={() => void sendFeedback('more')}
-                  title="Добавить больше треков этого артиста в очередь"
-                >
-                  чаще этот артист
-                </button>
                 <button
                   disabled={feedbackBusy}
                   onClick={() => void sendFeedback('less')}
@@ -561,8 +465,8 @@ export default function FlowView({
               </div>
               <div className="flow-now-bottom">
                 <p className="flow-feedback-note">
-                  «Чаще» добавит его треки, «Пропустить» уберёт текущий,
-                  «Убрать» исключит из этого потока, «Навсегда» — из всех будущих.
+                  «Пропустить» уберёт текущий трек, «Убрать» исключит артиста
+                  из этого потока, «Навсегда» — из всех будущих.
                 </p>
                 <button
                   className="flow-now-toggle"
@@ -636,26 +540,31 @@ export default function FlowView({
             <div>
               <b>Течение ещё не запущено</b>
               <p>
-                Оно соберёт поток из артистов, которых вы лайкаете и слушаете, добавит
-                похожих на них и будет пополнять очередь само.
+                Оно возьмёт двенадцать треков-якорей из вашей библиотеки и пойдёт
+                по похожим трекам, пополняя очередь сама.
               </p>
             </div>
           </div>
           <div className="flow-idle-steps">
-            <span><i>1</i> Любимые артисты уже взяты из библиотеки</span>
-            <span><i>2</i> Жанры и новизну можно оставить как есть</span>
+            <span><i>1</i> Двенадцать треков-якорей уже взяты из библиотеки</span>
+            <span><i>2</i> Жанры можно оставить как есть</span>
             <span><i>3</i> Нажмите «Запустить течение» выше</span>
           </div>
         </section>
       )}
 
-      <section id="flow-setup" className="flow-setup surface-hero surface-deep fade-up">
+      <section
+        id="flow-setup"
+        className={`flow-setup surface-hero surface-deep fade-up${setupOpen ? ' open' : ' collapsed'}`}
+      >
         <div className="flow-setup-head">
           <div>
             <h2>Настройки потока</h2>
-            <p>Можно менять до запуска и во время — всё запоминается.</p>
+            <p>Жанры и фильтры — если хочется точнее.</p>
           </div>
-          <span className="flow-setup-saved">сохраняется автоматически</span>
+          <button className="flow-setup-toggle" onClick={() => setSetupOpen((v) => !v)}>
+            {setupOpen ? 'свернуть' : 'настроить'}
+          </button>
         </div>
 
         <div className="flow-setup-grid">
@@ -736,157 +645,8 @@ export default function FlowView({
             {genreName ? <span className="flow-selected-genres">сейчас: {genreName}</span> : null}
           </div>
 
-          <div className="flow-setup-block flow-setup-novelty">
-            <div className="flow-setup-title">
-              <b>Новизна</b>
-              <span>{prefs.novelty}% новых</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={prefs.novelty}
-              onChange={(e) => setNovelty(Number(e.target.value))}
-              aria-label="Новизна течения"
-            />
-            <div className="flow-novelty-scale">
-              <span>только знакомые</span>
-              <span>только новые</span>
-            </div>
-            <p className="flow-setup-hint">
-              Доля артистов, которых нет в вашей библиотеке.
-              {active ? ' Меняется сразу.' : ' Применится при запуске.'}
-            </p>
-          </div>
+
         </div>
-      </section>
-
-      <section className="section fade-up">
-        <div className="section-head">
-          <div className="section-title">
-            <div>
-              <h2>Основа потока</h2>
-              <div className="section-sub">Эти артисты задают направление. Закрепите любимых или уберите лишних.</div>
-            </div>
-          </div>
-          <div className="section-tools">
-            <span className="count">
-              {allSeedRows.length
-                ? `${allSeedRows.length} ${plural(allSeedRows.length, 'артист', 'артиста', 'артистов')}`
-                : 'пусто'}
-            </span>
-          </div>
-        </div>
-
-        <p className="flow-seed-help">
-          Нажмите на артиста, чтобы включить его радио. <b>+</b> закрепить, <b>×</b> убрать.
-        </p>
-
-        <div className="seed-search">
-          <input
-            value={seedQuery}
-            onChange={(e) => setSeedQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void searchSeeds()
-            }}
-            placeholder="Добавить артиста в течение"
-            aria-label="Поиск артиста для течения"
-          />
-          <button onClick={() => void searchSeeds()} disabled={seedSearchBusy || seedQuery.trim().length < 2}>
-            {seedSearchBusy ? 'ищу…' : 'найти'}
-          </button>
-        </div>
-        {seedResults.length ? (
-          <div className="seed-results">
-            {seedResults.map((a) => (
-              <button
-                key={`${a.id ?? a.name}-${a.name}`}
-                className="seed-result"
-                onClick={() => void changeSeed('include', a.name)}
-                disabled={seedBusy === a.name}
-              >
-                {a.coverUrl ? <img src={a.coverUrl} alt="" /> : <span>{a.name.slice(0, 1)}</span>}
-                <b>{a.name}</b>
-                <i>+</i>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {allSeedRows.length ? (
-          <div className="seed-river">
-            {[...allSeedRows]
-              .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
-              .map((s) => {
-                const ref = seedRefs.find((r) => r.name.toLowerCase() === s.name.toLowerCase())
-                const pinned = prefs.includeSeeds.some((x) => x.toLowerCase() === s.name.toLowerCase())
-                const ratio = Math.max(0, Math.min(1, (s.weight ?? 0) / maxSeedWeight))
-                const size = 58 + Math.round(ratio * 18)
-                return (
-                  <div className="seed-source" key={s.name}>
-                    <button
-                      className="seed-main"
-                      onClick={() => onArtistRadio(s.name)}
-                      disabled={radioLoading}
-                      title={`Радио ${s.name}`}
-                    >
-                      <span
-                        className="seed-source-avatar"
-                        style={
-                          {
-                            '--seed-size': `${size}px`,
-                            '--seed-pct': `${Math.max(8, ratio * 100)}%`
-                          } as CSSProperties
-                        }
-                      >
-                        <span className="seed-ring" aria-hidden="true" />
-                        {ref?.coverUrl ? (
-                          <img className="seed-avatar" src={ref.coverUrl} alt="" loading="lazy" />
-                        ) : (
-                          <span className="seed-avatar letter" style={{ background: initialGradient(s.name) }}>
-                            {s.name.slice(0, 1).toUpperCase()}
-                          </span>
-                        )}
-                      </span>
-                      <span className="seed-name">{s.name}</span>
-                      <span className="seed-sub">{pinned ? 'закреплён' : 'включить радио'}</span>
-                    </button>
-                    <div className="seed-actions">
-                      <button
-                        className={`seed-pin${pinned ? ' on' : ''}`}
-                        onClick={() => (pinned ? unpinSeed(s.name) : void changeSeed('include', s.name))}
-                        title={pinned ? 'Открепить' : 'Закрепить в течении'}
-                        aria-label={pinned ? `Открепить ${s.name}` : `Закрепить ${s.name}`}
-                      >
-                        {pinned ? <IconCheck width={12} height={12} /> : <IconPlus width={12} height={12} />}
-                      </button>
-                      <button
-                        className="seed-ban"
-                        onClick={() => void changeSeed('exclude', s.name)}
-                        title="Исключить из течения"
-                        aria-label={`Исключить ${s.name}`}
-                      >
-                        <IconX width={12} height={12} />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-          </div>
-        ) : (
-          <div className="empty">
-            <b>Пока не из чего течь</b>
-            Поставьте лайки нескольким трекам — и течение соберётся.
-          </div>
-        )}
-
-        {prefs.excludeSeeds.length ? (
-          <div className="flow-excluded">
-            исключены: {prefs.excludeSeeds.join(', ')}
-            <button onClick={() => void restoreExcluded()}>вернуть</button>
-          </div>
-        ) : null}
       </section>
 
     </div>

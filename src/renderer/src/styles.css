@@ -11000,3 +11000,222 @@ img {
   color: var(--text-mute);
   font-size: 10.5px;
 }
+
+/* ==================== Течение: двенадцать якорей ==================== */
+
+.flow-anchors {
+  margin: -8px 0 22px;
+  padding: 17px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(16, 24, 34, 0.82), rgba(9, 14, 21, 0.82));
+}
+
+.flow-anchors-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 11px;
+}
+
+.flow-anchors-head b {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.flow-anchors-head span {
+  color: var(--text-mute);
+  font-size: 10px;
+}
+
+.flow-anchors-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.flow-anchor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.flow-anchor:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.flow-anchor-cover {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(55, 214, 207, 0.1);
+  color: #9debe5;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.flow-anchor-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.flow-anchor-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.flow-anchor-text b,
+.flow-anchor-text i {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-anchor-text b {
+  font-size: 10.5px;
+  font-weight: 570;
+}
+
+.flow-anchor-text i {
+  color: var(--text-mute);
+  font-size: 9.5px;
+  font-style: normal;
+}
+
+.flow-anchor-role {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-mute);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flow-anchor-role.role-like {
+  background: rgba(55, 214, 207, 0.09);
+  color: #8ce9e2;
+}
+
+.flow-anchor-role.role-unexpected {
+  background: rgba(141, 124, 246, 0.1);
+  color: #b5a9ff;
+}
+
+.flow-route-track {
+  overflow: hidden;
+  max-width: 230px;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-tier {
+  margin-left: 2px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-mute);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flow-tier-hit {
+  background: rgba(55, 214, 207, 0.1);
+  color: #8ce9e2;
+}
+
+.flow-tier-recent {
+  background: rgba(141, 124, 246, 0.12);
+  color: #b5a9ff;
+}
+
+.flow-tier-deep {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-mute);
+}
+
+@media (max-width: 1100px) {
+  .flow-anchors-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .flow-modes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flow-anchors-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.flow-setup.collapsed .flow-setup-grid {
+  display: none;
+}
+
+.flow-setup.collapsed {
+  padding-bottom: 20px;
+}
+
+.flow-setup-toggle {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.flow-setup-toggle:hover {
+  border-color: rgba(55, 214, 207, 0.35);
+  color: var(--text);
+}
+
+/* Выбрать все треки в библиотеке */
+.library-select-all {
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(55, 214, 207, 0.055);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.library-select-all:hover {
+  border-color: rgba(55, 214, 207, 0.35);
+  color: var(--text);
+}
+
+.library-selection-danger {
+  border-color: rgba(255, 138, 138, 0.45) !important;
+  background: rgba(255, 138, 138, 0.09) !important;
+  color: #ffb3b3 !important;
+}

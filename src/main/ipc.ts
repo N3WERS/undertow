@@ -201,6 +201,9 @@ export function registerIpc(): void {
   ipcMain.handle('history:add', async (_e, track: Track) => providers.addHistory(track))
   ipcMain.handle('history:clear', async () => providers.clearHistory())
   ipcMain.handle('likes:import', async () => providers.importYandexLikes())
+  ipcMain.handle('likes:import-youtube', async (_e, limit?: number) =>
+    providers.importYoutubeFromYandex(Number(limit) || 20)
+  )
 
   // подмена треков на YouTube: варианты, ручной выбор и прогрев по наведению
   ipcMain.handle('fallback:list', async (_e, track: Track) => ({

@@ -207,6 +207,7 @@ export default function App() {
   const [lib, setLib] = useState<LibrarySnapshot>({ likes: [], history: [], stats: { likes: 0, history: 0, updatedAt: null } })
   const [savedAlbums, setSavedAlbums] = useState<SavedAlbum[]>([])
   const [importing, setImporting] = useState(false)
+  const [importingYoutube, setImportingYoutube] = useState(false)
 
   const engineRef = useRef<AudioEngine | null>(null)
   const toastRef = useRef<(text: string, kind?: Toast['kind'], action?: Toast['action']) => void>(() => undefined)
@@ -481,15 +482,33 @@ export default function App() {
 
   const autoImported = useRef(false)
   const importLikesRef = useRef<null | (() => Promise<void>)>(null)
+  const importYoutube = useCallback(async () => {
+    setImportingYoutube(true)
+    try {
+      const res = await window.undertow.importYandexToYoutube(20)
+      await reloadLibrary()
+      const left = res.remaining ? `, осталось ещё ${res.remaining}` : ''
+      toast(
+        res.imported > 0
+          ? `Перенёс ${res.imported} треков из Яндекса в YouTube${left}`
+          : `Не нашёл новых соответствий на YouTube${left}`
+      )
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setImportingYoutube(false)
+    }
+  }, [reloadLibrary, toast])
   const importLikes = useCallback(async () => {
     setImporting(true)
     try {
       const res = await window.undertow.importYandexLikes()
       await reloadLibrary()
+      const failed = res.skipped > 0 ? `, не нашёл ${res.skipped}` : ''
       toast(
         res.imported > 0
-          ? `Подтянул ${res.imported} лайков из Яндекса — всего в библиотеке ${res.localTotal}`
-          : `Новых лайков нет: всё уже на месте (в Яндексе ${res.total})`
+          ? `Перенёс ${res.imported} лайков из Яндекса в YouTube${failed} — всего в библиотеке ${res.localTotal}`
+          : `Новых YouTube-копий нет${failed} (в Яндексе ${res.total})`
       )
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
@@ -876,7 +895,7 @@ export default function App() {
         return
       }
       setView('flow')
-      void startFlow({ startArtists: artists, sourceTitle: title })
+      void startFlow({ startArtists: artists, startTracks: tracks.slice(0, 8), sourceTitle: title })
     },
     [startFlow, toast]
   )
@@ -888,7 +907,7 @@ export default function App() {
         return
       }
       setView('flow')
-      void startFlow({ startArtists: [track.artist], sourceTitle: track.title })
+      void startFlow({ startArtists: [track.artist], startTracks: [track], sourceTitle: track.title })
     },
     [startFlow, toast]
   )
@@ -1454,7 +1473,6 @@ export default function App() {
               onSave={() => void saveFlow()}
               saving={flowSaving}
               onToast={toast}
-              radioLoading={radioLoading}
               onHover={hoverPrewarm}
             />
           )}
@@ -1546,6 +1564,7 @@ export default function App() {
               canImport={Boolean(state?.yandex.active)}
               yandexActive={Boolean(state?.yandex.active)}
               importing={importing}
+              importingYoutube={importingYoutube}
               onPlay={playTrack}
               onToggle={toggle}
               onLike={toggleLike}
@@ -1557,6 +1576,7 @@ export default function App() {
               onAddToPlaylist={setPickerTrack}
               onSimilar={(t) => void startSimilar(t)}
               onImport={() => void importLikes()}
+              onImportYoutube={() => void importYoutube()}
               onClearHistory={() => {
                 void window.undertow.clearHistory().then(() => {
                   setLib((prev) => ({ ...prev, history: [] }))

@@ -13,12 +13,14 @@ interface Props {
   playing: boolean
   canImport: boolean
   importing: boolean
+  importingYoutube: boolean
   yandexActive: boolean
   onPlay: (track: Track, list: Track[]) => void
   onToggle: () => void
   onLike: (track: Track) => void
   onLocked: (track: Track) => void
   onImport: () => void
+  onImportYoutube: () => void
   onClearHistory: () => void
   onHover?: (track: Track) => void
   onOpenArtist?: (target: { id?: string; name: string }) => void
@@ -63,6 +65,8 @@ const albumWord = (n: number): string => {
 }
 
 export default function LibraryView(p: Props) {
+  const yandexLikes = p.likes.filter((t) => t.provider === 'yandex').length
+  const hasYandexLikes = yandexLikes > 0
   const [tab, setTab] = useState<Tab>('likes')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>('default')
@@ -70,6 +74,7 @@ export default function LibraryView(p: Props) {
   const [selecting, setSelecting] = useState(false)
   const [anchor, setAnchor] = useState<string | null>(null)
   const [confirmDupes, setConfirmDupes] = useState(false)
+  const [confirmUnlike, setConfirmUnlike] = useState(false)
 
   const source = tab === 'likes' ? p.likes : p.history
   const filtered = useMemo(() => {
@@ -84,12 +89,17 @@ export default function LibraryView(p: Props) {
     setSelected(new Set())
     setAnchor(null)
     setConfirmDupes(false)
+    setConfirmUnlike(false)
     if (tab === 'albums') setSelecting(false)
   }, [tab, query, sort])
 
   useEffect(() => {
     if (!selecting) setSelected(new Set())
   }, [selecting])
+
+  useEffect(() => {
+    setConfirmUnlike(false)
+  }, [selected])
 
   const selectedTracks = useMemo(
     () => source.filter((track) => selected.has(track.id)),
@@ -113,6 +123,19 @@ export default function LibraryView(p: Props) {
     if (!q) return p.albums
     return p.albums.filter((album) => norm(`${album.title} ${album.artist}`).includes(q))
   }, [p.albums, query])
+
+  const allSelected =
+    filtered.length > 0 && filtered.every((track) => selected.has(track.id))
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set())
+      setAnchor(null)
+      return
+    }
+    setSelected(new Set(filtered.map((track) => track.id)))
+    setAnchor(filtered[0]?.id ?? null)
+  }
 
   const select = (track: Track, shiftKey: boolean) => {
     setSelected((prev) => {
@@ -143,10 +166,36 @@ export default function LibraryView(p: Props) {
           </p>
         </div>
         <div className="head-actions">
-          {p.canImport && (
-            <button className="play-btn ghost" onClick={p.onImport} disabled={p.importing}>
+          {tab === 'likes' && (
+            <button
+              className="play-btn ghost"
+              onClick={p.canImport ? p.onImport : () => p.onToast('Яндекс не подключён — сначала подключите его в настройках', 'error')}
+              disabled={p.importing}
+              title={p.canImport ? 'Найти все лайки Яндекса на YouTube и добавить только YouTube-копии' : 'Яндекс не подключён'}
+            >
               {p.importing ? <span className="spinner" /> : null}
               {p.importing ? 'Импортирую…' : 'Импортировать лайки из Яндекса'}
+            </button>
+          )}
+          {tab === 'likes' && (
+            <button
+              className="play-btn ghost"
+              onClick={
+                hasYandexLikes
+                  ? p.onImportYoutube
+                  : () => p.onToast('В библиотеке нет Яндекс-треков — сначала импортируйте лайки из Яндекса', 'error')
+              }
+              disabled={p.importingYoutube}
+              title={
+                hasYandexLikes
+                  ? `Найти ${Math.min(20, yandexLikes)} из ${yandexLikes} Яндекс-треков на YouTube и добавить копии в лайки`
+                  : 'В библиотеке нет Яндекс-треков: сначала импортируйте лайки из Яндекса'
+              }
+            >
+              {p.importingYoutube ? <span className="spinner" /> : null}
+              {p.importingYoutube
+                ? 'Ищу на YouTube…'
+                : `Импорт из Яндекса → YouTube${hasYandexLikes ? ` · ${yandexLikes}` : ''}`}
             </button>
           )}
           {tab === 'likes' && p.likes.length > 0 && (
@@ -225,6 +274,12 @@ export default function LibraryView(p: Props) {
           </button>
         ) : null}
 
+        {selecting && tab !== 'albums' && filtered.length > 0 ? (
+          <button className="library-select-all" onClick={toggleAll}>
+            {allSelected ? 'Снять все' : 'Выбрать все'}
+          </button>
+        ) : null}
+
         {tab === 'likes' && duplicates.length > 0 ? (
           <button
             className={`library-dupes${confirmDupes ? ' confirm' : ''}`}
@@ -248,15 +303,25 @@ export default function LibraryView(p: Props) {
           <div className="library-selection">
             <b>{selected.size} выбрано</b>
             <button
+              className={confirmUnlike ? 'library-selection-danger' : undefined}
               onClick={() => {
                 const allLiked = selectedTracks.every((track) => p.likedIds.has(track.id))
+                if (allLiked && selectedTracks.length > 1 && !confirmUnlike) {
+                  setConfirmUnlike(true)
+                  return
+                }
                 for (const track of selectedTracks) {
                   if (allLiked || !p.likedIds.has(track.id)) p.onLike(track)
                 }
                 p.onToast(allLiked ? 'Убрал из «Мне нравится»' : 'Добавил в «Мне нравится»')
+                setConfirmUnlike(false)
               }}
             >
-              {selectedTracks.every((track) => p.likedIds.has(track.id)) ? 'Убрать лайки' : 'В лайки'}
+              {selectedTracks.every((track) => p.likedIds.has(track.id))
+                ? confirmUnlike
+                  ? `Точно убрать ${selectedTracks.length}?`
+                  : 'Убрать лайки'
+                : 'В лайки'}
             </button>
             <button
               onClick={() => {

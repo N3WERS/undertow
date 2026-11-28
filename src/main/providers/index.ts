@@ -24,6 +24,7 @@ import * as flow from '../flow'
 import * as genres from '../genres'
 import * as playlists from '../playlists'
 import * as yandexMatch from '../yandexMatch'
+import * as youtubeImport from '../youtubeImport'
 import * as lyrics from '../lyrics'
 import type { BrowsePage, ResolvedStream, Section, Track } from './types'
 
@@ -265,37 +266,52 @@ export function clearHistory(): void {
 }
 
 export interface ImportResult {
-  /** сколько треков добавилось в локальную библиотеку */
+  /** сколько YouTube-копий добавилось в локальную библиотеку */
   imported: number
   /** сколько всего лайков у Яндекса */
   total: number
   /** сколько лайков стало локально */
   localTotal: number
+  /** сколько треков реально искали на YouTube */
+  searched: number
+  /** сколько не удалось сопоставить */
+  skipped: number
+  /** сколько ещё не обработано */
+  remaining: number
 }
 
 /**
- * Подтягивает лайки из Яндекса: сначала список id + даты, потом метаданные
- * пачками по 100. Один раз на клик — можно безопасно повторять, дубликаты не появятся.
+ * Импортирует лайки из Яндекса сразу как YouTube-копии.
+ * Яндекс-треки в библиотеку не добавляются.
  */
 export async function importYandexLikes(): Promise<ImportResult> {
   if (!yandexReady() || !yandexUid) throw new Error('Яндекс не подключён — импортировать нечего')
   const token = getYandexToken() as string
 
   const remote = await yandex.likedTracks(token, yandexUid)
-  const known = new Set(library.likedIds())
-  const missing = remote.filter((r) => !known.has(`${yandex.YANDEX_PROVIDER_TAG}:${r.id}`))
+  const dates = new Map(remote.map((r) => [r.id, r.likedAt]))
+  const entries: youtubeImport.ImportEntry[] = []
 
-  const dates = new Map(missing.map((m) => [m.id, m.likedAt]))
-  const entries: { track: Track; likedAt?: number }[] = []
-
-  for (let i = 0; i < missing.length; i += 100) {
-    const batch = missing.slice(i, i + 100).map((m) => m.id)
+  for (let i = 0; i < remote.length; i += 100) {
+    const batch = remote.slice(i, i + 100).map((m) => m.id)
     const found = await yandex.tracksByIds(token, batch)
     for (const f of found) entries.push({ track: f.track, likedAt: dates.get(f.id) || Date.now() })
   }
 
-  const imported = library.mergeLikes(entries)
-  return { imported, total: remote.length, localTotal: library.likedIds().length }
+  const result = await youtubeImport.importTracks(entries, { limit: 0, concurrency: 6 })
+  return {
+    imported: result.imported,
+    total: remote.length,
+    localTotal: library.likedIds().length,
+    searched: result.searched,
+    skipped: result.skipped,
+    remaining: result.remaining
+  }
+}
+
+/** Импорт существующих Яндекс-лайков в YouTube: Яндекс-API не используется. */
+export function importYoutubeFromYandex(limit = 20): Promise<youtubeImport.YoutubeImportResult> {
+  return youtubeImport.importYoutubeFromYandex(limit)
 }
 
 /* --------------------------- варианты подмены ---------------------------- */

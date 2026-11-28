@@ -245,7 +245,7 @@ export class AudioEngine {
         // отдать мёртвый редирект. Пробуем до трёх свежих URL, прежде чем
         // пропустить трек: разные запросы попадают на разные узлы CDN.
         const track = this.queue[this.index]
-        if (track?.provider === 'youtube' && this.activeAttempts < 1) {
+        if (track?.provider === 'youtube' && this.activeAttempts < 3) {
           this.activeAttempts += 1
           void this.retryActive(el, track)
           return
@@ -837,7 +837,7 @@ export class AudioEngine {
       if (this.destroyed || this.queue[this.index]?.id !== id || !this.playing || this.retrying) return
       const el = this.els[this.active]
       if (el.readyState >= 2) return
-      if (this.activeAttempts < 1) {
+      if (this.activeAttempts < 3) {
         this.activeAttempts += 1
         void this.retryActive(el, track)
       } else {
