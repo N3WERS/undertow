@@ -47,6 +47,9 @@ export interface FlowAnchor {
   pinned?: boolean
 }
 
+const MAX_STREAM = 700
+const MAX_ROUTES = 1200
+
 const PRESET = {
   novelty: 40,
   tiers: { hit: 0.4, recent: 0.4, deep: 0.2 } as Record<FlowTier, number>,
@@ -250,6 +253,7 @@ function flowStorePath(name: string): string {
 }
 
 const SESSION_FILE = 'flow-session.json'
+let sessionWrite: Promise<void> = Promise.resolve()
 
 interface PersistedFlow {
   v: 1
@@ -388,16 +392,21 @@ function restoreSession(data: Record<string, unknown>): Session {
 
 function saveSession(): void {
   if (!session) return
-  try {
-    const file = flowStorePath(SESSION_FILE)
-    const data = serializeSession(session)
-    data.queue = sessionQueue
-    data.index = sessionIndex
-    fs.writeFileSync(`${file}.tmp`, JSON.stringify(data), 'utf8')
-    fs.renameSync(`${file}.tmp`, file)
-  } catch {
-    /* память потока не должна ломать воспроизведение */
-  }
+  trimSession(session)
+  const file = flowStorePath(SESSION_FILE)
+  const data = serializeSession(session)
+  data.queue = sessionQueue
+  data.index = sessionIndex
+  const payload = JSON.stringify(data)
+  // Не блокируем main на каждом пропуске/пополнении: записи идут по очереди.
+  sessionWrite = sessionWrite
+    .then(async () => {
+      await fsp.writeFile(`${file}.tmp`, payload, 'utf8')
+      await fsp.rename(`${file}.tmp`, file)
+    })
+    .catch(() => {
+      /* память потока не должна ломать воспроизведение */
+    })
 }
 
 export interface LastFlowInfo {
@@ -407,6 +416,9 @@ export interface LastFlowInfo {
 }
 
 export function lastFlow(): LastFlowInfo {
+  if (session) {
+    return { available: session.stream.length > 0, tracks: session.stream.length, savedAt: Date.now() }
+  }
   try {
     const parsed = JSON.parse(fs.readFileSync(flowStorePath(SESSION_FILE), 'utf8')) as PersistedFlow
     if (parsed?.v !== 1 || !Array.isArray(parsed.s?.stream)) {
@@ -1125,7 +1137,19 @@ function draw(s: Session, want: number): Track[] {
     if (artist && !s.libraryArtists.has(flat(artist))) rememberDiscovery(artist, track.coverUrl)
   }
   s.stream.push(...out)
+  trimSession(s)
   return out
+}
+
+/** Не даём сессии расти бесконечно: очередь и маршруты старых треков не нужны. */
+function trimSession(s: Session): void {
+  if (s.stream.length > MAX_STREAM) s.stream = s.stream.slice(-MAX_STREAM)
+  if (s.routes.size <= MAX_ROUTES) return
+  const keep = new Set(s.stream.map((t) => t.id))
+  for (const id of s.routes.keys()) {
+    if (s.routes.size <= MAX_ROUTES) break
+    if (!keep.has(id)) s.routes.delete(id)
+  }
 }
 
 /** Первый трек не должен быть случайным: хит, новинка или характерная глубина. */
@@ -1603,6 +1627,11 @@ export function info(): FlowInfo {
   }
 }
 
+/** Лёгкий ответ для плашки в мини-плеере: только причина одного трека. */
+export function route(trackId: string): FlowRoute | null {
+  return session?.routes.get(trackId) ?? null
+}
+
 /** Учитывает фактически начатый трек: треки, минуты, новые артисты. */
 export function notePlayed(track: Track): void {
   const s = session
@@ -1665,7 +1694,6 @@ export function setNovelty(value: number): FlowInfo {
     applyNovelty(session, value)
     saveSession()
   }
-  saveSession()
   return info()
 }
 

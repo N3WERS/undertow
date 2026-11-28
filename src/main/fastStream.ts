@@ -9,7 +9,7 @@
  * LOGIN_REQUIRED, не отдать URL или сменить клиент. Любая такая ситуация
  * возвращает null, и вызывающий код падает в обычный yt-dlp fallback.
  */
-import { Innertube } from 'youtubei.js'
+import type { Innertube } from 'youtubei.js'
 import { log } from './log'
 
 let clientPromise: Promise<Innertube> | null = null
@@ -17,12 +17,15 @@ let ready = false
 
 function fastClient(): Promise<Innertube> {
   if (!clientPromise) {
-    clientPromise = Innertube.create({
-      retrieve_player: true,
-      generate_session_locally: true,
-      lang: 'ru',
-      location: 'RU'
-    })
+    clientPromise = import('youtubei.js')
+      .then(({ Innertube }) =>
+        Innertube.create({
+          retrieve_player: true,
+          generate_session_locally: true,
+          lang: 'ru',
+          location: 'RU'
+        })
+      )
       .then((yt) => {
         ready = true
         log('fast client ready')

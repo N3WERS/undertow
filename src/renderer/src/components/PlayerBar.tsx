@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Track, TrackVersion } from '../types'
 import type { RepeatMode } from '../audio/engine'
 import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
+import { coverAt } from '../covers'
 import ArtistLine from './ArtistLine'
 import { usePanelOrigin } from './usePanelOrigin'
 import { removeOffline, saveTrack, useOffline } from '../offline'
@@ -86,15 +87,115 @@ interface Props {
   onClosePanels: () => void
 }
 
-export default function PlayerBar(p: Props) {
+interface ProgressProps {
+  track: Track | null
+  resolving: boolean
+  fallbackProgress: number
+  fallbackDuration: number
+  onSeek: (sec: number) => void
+}
+
+/** Только полоска прогресса подписана на 10 Гц. Остальной плеер не перерисовывается. */
+function PlayerProgress({ track, resolving, fallbackProgress, fallbackDuration, onSeek }: ProgressProps) {
+  const live = useProgress()
   const progressRef = useRef<HTMLDivElement>(null)
+  const [hover, setHover] = useState<{ x: number; sec: number } | null>(null)
+  const progress = track ? (live.trackId === track.id ? live.time : 0) : fallbackProgress
+  const duration = (live.trackId === track?.id ? live.duration : 0) || fallbackDuration
+  const pct = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0
+
+  const seekAt = (clientX: number): void => {
+    const el = progressRef.current
+    if (!el || duration <= 0) return
+    const r = el.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
+    onSeek(ratio * duration)
+  }
+  const hoverAt = (clientX: number): void => {
+    const el = progressRef.current
+    if (!el || duration <= 0) return
+    const r = el.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
+    setHover({ x: Math.min(Math.max(ratio * r.width, 38), r.width - 38), sec: ratio * duration })
+  }
+
+  return (
+    <div
+      className={`player-progress${!track ? ' idle' : ''}${resolving ? ' loading' : ''}`}
+      ref={progressRef}
+      role="slider"
+      aria-label="Прогресс трека"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      aria-valuenow={Math.round(progress)}
+      tabIndex={track ? 0 : -1}
+      onKeyDown={(e) => {
+        if (!track || duration <= 0) return
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          const delta = e.key === 'ArrowLeft' ? -5 : 5
+          onSeek(Math.min(duration, Math.max(0, progress + delta)))
+        }
+      }}
+      onMouseMove={(e) => hoverAt(e.clientX)}
+      onMouseLeave={() => setHover(null)}
+      onMouseDown={(e) => {
+        if (!track || duration <= 0) return
+        seekAt(e.clientX)
+        const move = (ev: MouseEvent): void => {
+          seekAt(ev.clientX)
+          hoverAt(ev.clientX)
+        }
+        const up = (): void => {
+          window.removeEventListener('mousemove', move)
+          window.removeEventListener('mouseup', up)
+        }
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', up)
+      }}
+    >
+      <div className="player-progress-track">
+        <div
+          className="player-progress-fill"
+          style={resolving ? undefined : { transform: `scaleX(${pct / 100})` }}
+        />
+      </div>
+      {hover && track ? (
+        <span className="player-progress-tip" style={{ left: `${hover.x}px` }}>
+          {fmtTime(hover.sec)} <i>/</i> {fmtTime(duration)}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/** Меняет только CSS-переменную «дыхания» обложки, без перерисовки плеера. */
+function RmsBinder({ level }: { level?: number }) {
+  const live = useProgress()
+  const last = useRef(-1)
+  const lastAt = useRef(0)
+  useEffect(() => {
+    const value = Math.min(1, Math.max(0, level ?? live.rms))
+    const now = performance.now()
+    // Меняем переменную только на обложке и не чаще 5 раз в секунду:
+    // иначе style recalc расходится по всему плееру.
+    if (now - lastAt.current < 200 && level === undefined) return
+    if (Math.abs(value - last.current) < 0.025 && level === undefined) return
+    lastAt.current = now
+    last.current = value
+    const el = document.querySelector<HTMLElement>('.now-media')
+    if (el) el.style.setProperty('--rms', value.toFixed(3))
+  }, [level, live.rms])
+  return null
+}
+
+export default function PlayerBar(p: Props) {
   const versionsRef = useRef<HTMLDivElement>(null)
   const eqRef = useRef<HTMLDivElement>(null)
   const eqWrapRef = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState<string | null>(null)
   const [eqOpen, setEqOpen] = useState(false)
   const eqPreset = presetFor(p.eq.gains)
-  const [hover, setHover] = useState<{ x: number; sec: number } | null>(null)
   const offline = useOffline()
   const saveProgress = p.track ? offline.progress[p.track.id] : undefined
   const savedLocal = p.track ? offline.ids.has(p.track.id) : false
@@ -126,29 +227,6 @@ export default function PlayerBar(p: Props) {
   for (const v of p.versions?.list ?? []) counts.set(v.label, (counts.get(v.label) ?? 0) + 1)
   const chips = [...counts.entries()].sort((a, b) => b[1] - a[1])
   const shown = (p.versions?.list ?? []).filter((v) => !filter || v.label === filter)
-  // время приходит из отдельного стора: App не перерисовывается на каждом тике
-  const live = useProgress()
-  const progress = p.track ? live.time : p.progress
-  const duration = live.duration || p.duration
-  const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0
-
-  const seekAt = (clientX: number) => {
-    const el = progressRef.current
-    if (!el || duration <= 0) return
-    const r = el.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
-    p.onSeek(ratio * duration)
-  }
-
-  const hoverAt = (clientX: number) => {
-    const el = progressRef.current
-    if (!el || duration <= 0) return
-    const r = el.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
-    // подсказку не даём уезжать за края панели
-    setHover({ x: Math.min(Math.max(ratio * r.width, 38), r.width - 38), sec: ratio * duration })
-  }
-
   if (!p.track) {
     return (
       <footer className="player idle player-empty">
@@ -183,7 +261,6 @@ export default function PlayerBar(p: Props) {
       className={`player${p.track && p.playing ? ' playing' : ''}${!p.track ? ' idle' : ''}${
         p.track && !p.playing ? ' paused' : ''
       }`}
-      style={{ '--rms': Math.min(1, Math.max(0, p.level ?? live.rms)).toFixed(3) } as CSSProperties}
       onClick={(e) => {
         if (!p.track) return
         const el = e.target as HTMLElement
@@ -191,49 +268,14 @@ export default function PlayerBar(p: Props) {
         p.onExpand()
       }}
     >
-      <div
-        className={`player-progress${!p.track ? ' idle' : ''}${p.resolving ? ' loading' : ''}`}
-        ref={progressRef}
-        role="slider"
-        aria-label="Прогресс трека"
-        aria-valuemin={0}
-        aria-valuemax={Math.round(duration)}
-        aria-valuenow={Math.round(progress)}
-        tabIndex={p.track ? 0 : -1}
-        onKeyDown={(e) => {
-          if (!p.track || duration <= 0) return
-          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            e.preventDefault()
-            const delta = e.key === 'ArrowLeft' ? -5 : 5
-            p.onSeek(Math.min(duration, Math.max(0, progress + delta)))
-          }
-        }}
-        onMouseMove={(e) => hoverAt(e.clientX)}
-        onMouseLeave={() => setHover(null)}
-        onMouseDown={(e) => {
-          if (!p.track || duration <= 0) return
-          seekAt(e.clientX)
-          const move = (ev: MouseEvent) => {
-            seekAt(ev.clientX)
-            hoverAt(ev.clientX)
-          }
-          const up = () => {
-            window.removeEventListener('mousemove', move)
-            window.removeEventListener('mouseup', up)
-          }
-          window.addEventListener('mousemove', move)
-          window.addEventListener('mouseup', up)
-        }}
-      >
-        <div className="player-progress-track">
-          <div className="player-progress-fill" style={{ width: `${pct}%` }} />
-        </div>
-        {hover && p.track ? (
-          <span className="player-progress-tip" style={{ left: `${hover.x}px` }}>
-            {fmtTime(hover.sec)} <i>/</i> {fmtTime(duration)}
-          </span>
-        ) : null}
-      </div>
+      <RmsBinder level={p.level} />
+      <PlayerProgress
+        track={p.track}
+        resolving={p.resolving}
+        fallbackProgress={p.progress}
+        fallbackDuration={p.duration}
+        onSeek={p.onSeek}
+      />
 
       <div className={`now${p.track ? '' : ' now-empty'}`}>
         <button
@@ -245,7 +287,7 @@ export default function PlayerBar(p: Props) {
           aria-haspopup="dialog"
         >
           {p.track?.coverUrl ? (
-            <img className="now-cover" src={p.track.coverUrl} alt="" />
+            <img className="now-cover" src={coverAt(p.track.coverUrl, 160)} alt="" />
           ) : (
             <span className="now-cover idle-cover" aria-hidden="true">
               <IconWave width={24} height={24} />
@@ -468,7 +510,7 @@ export default function PlayerBar(p: Props) {
                 <div className="alt-head">
                   <span className={`panel-art${p.track.coverUrl ? '' : ' empty'}`}>
                     {p.track.coverUrl ? (
-                      <img src={p.track.coverUrl} alt="" />
+                      <img src={coverAt(p.track.coverUrl, 160)} alt="" />
                     ) : (
                       <IconLayers width={18} height={18} />
                     )}
@@ -751,7 +793,7 @@ export default function PlayerBar(p: Props) {
             }}
           >
             <div className="bar-track">
-              <div className="bar-fill" style={{ width: `${p.volume * 100}%` }} />
+              <div className="bar-fill" style={{ transform: `scaleX(${p.volume})` }} />
             </div>
           </div>
         </div>

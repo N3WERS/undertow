@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Lyrics, Track } from '../types'
 import { IconX } from './Icons'
-import { useProgress } from '../audio/progress'
+import { useProgressSlow } from '../audio/progress'
+import { coverAt } from '../covers'
 import { usePanelOrigin } from './usePanelOrigin'
 
 interface Props {
@@ -13,7 +14,7 @@ interface Props {
 
 /** Текст трека поверх плеера: LRC-строки подсвечиваются по ходу воспроизведения. */
 export default function LyricsPanel({ track, shifted, onSeek, onClose }: Props) {
-  const { time } = useProgress()
+  const { time } = useProgressSlow(250)
   const [data, setData] = useState<Lyrics | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -59,7 +60,7 @@ export default function LyricsPanel({ track, shifted, onSeek, onClose }: Props) 
     <div className={`lyrics-panel${shifted ? ' shifted' : ''}`} ref={panelRef}>
       <div className="lyrics-head">
         {track.coverUrl ? (
-          <img className="lyrics-cover" src={track.coverUrl} alt="" />
+          <img className="lyrics-cover" src={coverAt(track.coverUrl, 160)} alt="" />
         ) : (
           <span className="lyrics-cover lyrics-cover-empty" aria-hidden="true" />
         )}

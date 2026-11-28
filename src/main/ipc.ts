@@ -186,6 +186,7 @@ export function registerIpc(): void {
   })
   ipcMain.handle('flow:more', async () => providers.flowMore())
   ipcMain.handle('flow:info', async () => providers.flowInfo())
+  ipcMain.handle('flow:route', async (_e, trackId: string) => providers.flowRoute(String(trackId ?? '')))
   ipcMain.handle('flow:seeds', async () => providers.flowSeeds())
   ipcMain.handle('flow:tracks', async () => providers.flowTracks())
   ipcMain.handle('flow:discoveries', async () => providers.flowDiscoveries())

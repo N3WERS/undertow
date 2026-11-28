@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChartScope, Section, TopChart, Track } from '../types'
 import TrackList, { fmtTime } from './TrackList'
 import { IconClose, IconPlay, IconSpark } from './Icons'
@@ -348,6 +348,39 @@ export default function Home({
   const [active, setActive] = useState<string | null>('home-chart')
   const [stuck, setStuck] = useState(false)
   const [edges, setEdges] = useState({ left: false, right: false })
+  const scrollRaf = useRef<number | null>(null)
+  const sectionOffsets = useRef<Record<string, number>>({})
+  const offsetsDirty = useRef(true)
+
+  const measureSectionOffsets = (): void => {
+    const sc = scrollRef.current
+    if (!sc) return
+    const base = sc.getBoundingClientRect().top - sc.scrollTop
+    for (const s of sections) {
+      const el = sectionRefs.current[s.id]
+      if (el) sectionOffsets.current[s.id] = el.getBoundingClientRect().top - base
+    }
+    offsetsDirty.current = false
+  }
+
+  useLayoutEffect(() => {
+    offsetsDirty.current = true
+  }, [sections, expanded, chart])
+
+  useEffect(() => {
+    const onResize = (): void => {
+      offsetsDirty.current = true
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current)
+    },
+    []
+  )
 
   /** Стрелки показываем только если чипы реально не влезли. */
   const syncEdges = (): void => {
@@ -401,25 +434,32 @@ export default function Home({
   }
 
   const trackScroll = (): void => {
-    const sc = scrollRef.current
-    if (!sc) return
-    // offsetTop врёт, если offsetParent не скролл-контейнер: считаем по экрану
-    const barH = chipsRef.current?.getBoundingClientRect().height ?? 0
-    const line = sc.getBoundingClientRect().top + barH + 44
-    const wrap = chipsRef.current
-    const flush = Boolean(wrap) && wrap!.getBoundingClientRect().top <= sc.getBoundingClientRect().top + 1
-    setStuck((prev) => (prev === flush ? prev : flush))
+    if (scrollRaf.current) return
+    // Один замер геометрии на кадр: иначе каждый pixel scroll вызывает
+    // принудительный layout у бара и всех секций.
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = null
+      const sc = scrollRef.current
+      if (!sc) return
+      if (offsetsDirty.current) measureSectionOffsets()
+      const scRect = sc.getBoundingClientRect()
+      const barH = chipsRef.current?.getBoundingClientRect().height ?? 0
+      const line = sc.scrollTop + barH + 44
+      const wrap = chipsRef.current
+      const flush = Boolean(wrap) && wrap!.getBoundingClientRect().top <= scRect.top + 1
+      setStuck((prev) => (prev === flush ? prev : flush))
 
-    let current: string | null = chart ? 'home-chart' : null
-    for (const s of sections) {
-      const el = sectionRefs.current[s.id]
-      if (el && el.getBoundingClientRect().top <= line) current = s.id
-    }
-    // последняя секция может не дотянуться до линии — подсвечиваем её у дна
-    if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4) {
-      current = sections[sections.length - 1]?.id ?? current
-    }
-    setActive(current)
+      let current: string | null = chart ? 'home-chart' : null
+      for (const s of sections) {
+        const top = sectionOffsets.current[s.id]
+        if (top !== undefined && top <= line) current = s.id
+      }
+      // последняя секция может не дотянуться до линии — подсвечиваем её у дна
+      if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4) {
+        current = sections[sections.length - 1]?.id ?? current
+      }
+      setActive(current)
+    })
   }
 
   if (loading) {

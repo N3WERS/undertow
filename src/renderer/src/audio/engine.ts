@@ -11,7 +11,7 @@
  */
 import type { ResolvedStream, Track } from '../types'
 import { EQ_BANDS, clampEq, DEFAULT_EQ, type EqSettings } from './eq'
-import Hls from 'hls.js'
+import type HlsType from 'hls.js'
 
 /** off — не повторять; all — очередь по кругу; one — текущий трек */
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -96,16 +96,21 @@ export class AudioEngine {
   private ctx: AudioContext | null = null
   private els: HTMLAudioElement[] = []
   private gains: GainNode[] = []
-  private hls: (Hls | null)[] = [null, null]
+  private hls: (HlsType | null)[] = [null, null]
+  /** отменяет устаревшую асинхронную загрузку hls.js */
+  private hlsTicket = [0, 0]
   private master: GainNode | null = null
-  private analyser: AnalyserNode | null = null
   /** измерительный вход нормализации: до EQ и до лимитера */
   private normAnalyser: AnalyserNode | null = null
   /** общий вход эквалайзера: preamp → 10 фильтров → лимитер */
   private eqPreamp: GainNode | null = null
   private eqNodes: BiquadFilterNode[] = []
+  private limiter: DynamicsCompressorNode | null = null
+  /** включён ли сейчас обход цепочки эквалайзера */
+  private eqActive = true
+  /** direct — без нормы и EQ, processed — через рабочие узлы */
+  private routeMode: 'direct' | 'processed' | null = null
   private buf: Float32Array = new Float32Array(2048)
-  private freqBuf: Uint8Array = new Uint8Array(1024)
 
   private queue: Track[] = []
   private index = -1
@@ -171,10 +176,6 @@ export class AudioEngine {
     comp.attack.value = 0.004
     comp.release.value = 0.25
 
-    const analyser = ctx.createAnalyser()
-    analyser.fftSize = 2048
-    analyser.smoothingTimeConstant = 0.55
-
     // Нормализация слушает громкость ДО эквалайзера: иначе подъём баса
     // автоматически компенсировался бы и эквалайзер боролся бы сам с собой.
     // Ветка измерения уходит в нулевой гейн, чтобы граф гарантированно
@@ -203,16 +204,16 @@ export class AudioEngine {
       return filter
     })
     tail.connect(comp)
-    comp.connect(analyser)
-    analyser.connect(ctx.destination)
+    comp.connect(ctx.destination)
 
     this.master = master
-    this.analyser = analyser
     this.normAnalyser = normAnalyser
     this.eqPreamp = eqPreamp
     this.eqNodes = eqNodes
-    this.buf = new Float32Array(analyser.fftSize)
+    this.limiter = comp
+    this.buf = new Float32Array(normAnalyser.fftSize)
     this.applyEq()
+    this.applyRouting()
 
     for (let i = 0; i < 2; i++) {
       const el = new Audio()
@@ -271,27 +272,6 @@ export class AudioEngine {
     return ctx
   }
 
-  /**
-   * Спектр для визуализации: `bins` значений 0…255 от низа к верху.
-   * Рендерер рисует из него волну вокруг орбиты «Течения».
-   */
-  spectrum(bins = 64): Uint8Array | null {
-    const analyser = this.analyser
-    if (!analyser || !this.ctx) return null
-    analyser.getByteFrequencyData(this.freqBuf as Uint8Array<ArrayBuffer>)
-    if (bins >= this.freqBuf.length) return this.freqBuf
-    const out = new Uint8Array(bins)
-    // логарифмическая выборка: низы не должны занимать весь круг
-    for (let i = 0; i < bins; i++) {
-      const from = Math.floor(Math.pow(i / bins, 1.9) * (this.freqBuf.length - 1))
-      const to = Math.max(from + 1, Math.floor(Math.pow((i + 1) / bins, 1.9) * (this.freqBuf.length - 1)))
-      let peak = 0
-      for (let j = from; j < to; j++) peak = Math.max(peak, this.freqBuf[j])
-      out[i] = peak
-    }
-    return out
-  }
-
   /** Громкость 0…1 для «дыхания» подсветки. */
   energy(): number {
     return this.playing ? this.rms : 0
@@ -304,30 +284,39 @@ export class AudioEngine {
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(this.opts.volume * dbToGain(this.normDb), this.ctx.currentTime, 0.05)
     }
+    this.applyRouting()
   }
 
   /**
    * HLS приходит с SoundCloud: Chromium не умеет m3u8 в <audio>, поэтому
    * для таких потоков подключаем hls.js к тому же медиаэлементу.
    */
-  private loadInto(el: HTMLAudioElement, slot: number, stream: ResolvedStream): void {
+  private async loadInto(el: HTMLAudioElement, slot: number, stream: ResolvedStream): Promise<void> {
     this.destroyHls(slot)
+    const ticket = ++this.hlsTicket[slot]
     if (stream.hls || /\.m3u8(\?|$)/i.test(stream.url)) {
-      if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          backBufferLength: 90,
-          maxBufferLength: 30
-        })
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            window.undertow.log('hls fatal', { type: data.type, details: data.details })
-          }
-        })
-        this.hls[slot] = hls
-        hls.loadSource(stream.url)
-        hls.attachMedia(el)
-        return
+      try {
+        // hls.js нужен только SoundCloud: не тянем 600 КБ в первый экран.
+        const { default: Hls } = await import('hls.js')
+        if (this.destroyed || ticket !== this.hlsTicket[slot]) return
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            enableWorker: true,
+            backBufferLength: 90,
+            maxBufferLength: 30
+          })
+          hls.on(Hls.Events.ERROR, (_event, data) => {
+            if (data.fatal) {
+              window.undertow.log('hls fatal', { type: data.type, details: data.details })
+            }
+          })
+          this.hls[slot] = hls
+          hls.loadSource(stream.url)
+          hls.attachMedia(el)
+          return
+        }
+      } catch {
+        /* без hls.js остаётся прямой src — для не-HLS это обычный путь */
       }
     }
     el.src = stream.url
@@ -335,6 +324,7 @@ export class AudioEngine {
   }
 
   private destroyHls(slot: number): void {
+    this.hlsTicket[slot] += 1
     const hls = this.hls[slot]
     if (!hls) return
     this.hls[slot] = null
@@ -351,15 +341,45 @@ export class AudioEngine {
     this.applyEq()
   }
 
+  /**
+   * Если нормализация и эквалайзер выключены, незачем гонять сигнал через
+   * измерительную ветку и цепочку фильтров. Оставляем только страховочный
+   * лимитер — это заметно дешевле для аудиопотока.
+   */
+  private applyRouting(): void {
+    const ctx = this.ctx
+    if (!ctx || !this.master || !this.limiter || !this.eqPreamp || !this.normAnalyser) return
+    const processed = this.eqActive || this.opts.normalization
+    const mode = processed ? 'processed' : 'direct'
+    if (mode === this.routeMode) return
+    this.master.disconnect()
+    if (mode === 'direct') {
+      this.master.connect(this.limiter)
+    } else {
+      this.master.connect(this.eqPreamp)
+      if (this.opts.normalization) this.master.connect(this.normAnalyser)
+    }
+    this.routeMode = mode
+  }
+
   private applyEq(): void {
     const ctx = this.ctx
-    if (!ctx || !this.eqPreamp) return
+    if (!ctx || !this.eqPreamp || !this.limiter) return
     const now = ctx.currentTime
     const on = this.eq.enabled
-    this.eqPreamp.gain.setTargetAtTime(on ? dbToGain(this.eq.preamp) : 1, now, 0.03)
+    const flat = this.eq.gains.every((gain) => gain === 0) && this.eq.preamp === 0
+    // Плоский эквалайзер не должен гонять 10 biquad-фильтров в реальном времени.
+    const active = on && !flat
+    this.eqPreamp.gain.setTargetAtTime(active ? dbToGain(this.eq.preamp) : 1, now, 0.03)
     this.eqNodes.forEach((filter, i) => {
-      filter.gain.setTargetAtTime(on ? this.eq.gains[i] ?? 0 : 0, now, 0.03)
+      filter.gain.setTargetAtTime(active ? this.eq.gains[i] ?? 0 : 0, now, 0.03)
     })
+    if (active === this.eqActive) return
+    this.eqPreamp.disconnect()
+    if (active) this.eqPreamp.connect(this.eqNodes[0])
+    else this.eqPreamp.connect(this.limiter)
+    this.eqActive = active
+    this.applyRouting()
   }
 
   async setQueue(tracks: Track[], startIndex: number): Promise<void> {
@@ -945,13 +965,13 @@ export class AudioEngine {
   }
 
   /**
-   * Готовит ссылки на 2–5 треков вперёд. Сам следующий трек уже загружен в
+   * Готовит ссылки на 2–3 трека вперёд. Сам следующий трек уже загружен в
    * аудио-слот, а здесь параллельно прогреваются URL для дальнейших стыков:
    * к моменту перехода resolve отдаёт готовый поток без сетевой паузы.
    */
   private async prewarmAhead(): Promise<void> {
     const token = this.preloadToken
-    const targets = [2, 3, 4, 5]
+    const targets = [2, 3]
       .map((step) => this.queue[this.index + step])
       .filter((t): t is Track => Boolean(t) && !this.destroyed && token === this.preloadToken)
     await Promise.all(
@@ -1232,7 +1252,7 @@ export class AudioEngine {
     const now = performance.now()
     // RMS читаем не чаще ~11 раз в секунду: на слух нормализация всё равно
     // сглажена, а 60 замеров по 2048 сэмплов каждый кадр — лишняя нагрузка.
-    if (el.src && this.playing && now - this.lastNormalize >= 90) {
+    if (el.src && this.playing && now - this.lastNormalize >= 150) {
       this.lastNormalize = now
       this.applyNormalization()
     }
@@ -1280,10 +1300,22 @@ export class AudioEngine {
 
   private scheduleNext(): void {
     if (this.destroyed || !this.playing || this.raf || this.timer) return
-    // в фоне достаточно 8 проверок в секунду: стык всё равно ловим заранее,
-    // а rAF продолжал бы будить кадры и React без видимой пользы
-    if (document.hidden) this.timer = setTimeout(this.loop, 120)
-    else this.raf = requestAnimationFrame(this.loop)
+    // Обычный трек не требует 60 кадров в секунду: прогресс и нормализация
+    // обновляются 10 раз в секунду. rAF включаем только у стыка/кроссфейда,
+    // где важна точность до кадра.
+    if (this.needsFastLoop()) this.raf = requestAnimationFrame(this.loop)
+    else this.timer = setTimeout(this.loop, document.hidden ? 120 : 100)
+  }
+
+  private needsFastLoop(): boolean {
+    const el = this.els[this.active]
+    if (!el || !el.src) return false
+    if (this.switching) return true
+    const duration = Number.isFinite(el.duration) ? el.duration : (this.queue[this.index]?.durationSec ?? 0)
+    if (!(duration > 0)) return false
+    const remain = duration - el.currentTime
+    if (remain <= 2) return true
+    return this.opts.crossfadeSec > 0 && remain <= this.opts.crossfadeSec + 0.5
   }
 
   private syncLoop(): void {

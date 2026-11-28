@@ -258,14 +258,6 @@ export default function TopoField({ started = false, playing = false }: Props): 
             <stop offset="0.68" stopColor="#5eead4" stopOpacity="0.18" />
             <stop offset="0.82" stopColor="#5eead4" stopOpacity="0" />
             <stop offset="1" stopColor="#5eead4" stopOpacity="0" />
-            <animateTransform
-              attributeName="gradientTransform"
-              type="translate"
-              from="0 0"
-              to={`${SHIMMER_PERIOD} 0`}
-              dur="11.8s"
-              repeatCount="indefinite"
-            />
           </linearGradient>
         </defs>
 

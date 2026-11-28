@@ -18,7 +18,8 @@ import {
   IconWave
 } from './Icons'
 import { fmtTime } from './TrackList'
-import { useProgress } from '../audio/progress'
+import { useProgressSlow } from '../audio/progress'
+import { coverAt } from '../covers'
 import { removeOffline, saveTrack, useOffline } from '../offline'
 import type { RepeatMode } from '../audio/engine'
 import type { FlowRoute, Track } from '../types'
@@ -79,13 +80,13 @@ export default function MiniPlayer({
   onCycleRepeat,
   onRestore
 }: Props): JSX.Element {
-  const live = useProgress()
+  const live = useProgressSlow(220)
   const offline = useOffline()
   const [queueOpen, setQueueOpen] = useState(false)
   const savedLocal = track ? offline.ids.has(track.id) : false
   const saveProgress = track ? offline.progress[track.id] : undefined
-  const progress = track ? live.time : 0
-  const total = live.duration > 0 ? live.duration : duration
+  const progress = track && live.trackId === track.id ? live.time : 0
+  const total = live.trackId === track?.id && live.duration > 0 ? live.duration : duration
   const percent = total > 0 ? Math.min(100, Math.max(0, (progress / total) * 100)) : 0
   const queueStart = Math.max(0, queueIndex + 1)
   const upcoming = queue.slice(queueStart, queueStart + 2)
@@ -185,7 +186,7 @@ export default function MiniPlayer({
               aria-label="Открыть полный вид"
             >
               {track?.coverUrl ? (
-                <img src={track.coverUrl} alt="" draggable={false} />
+                <img src={coverAt(track.coverUrl, 240)} alt="" draggable={false} />
               ) : (
                 <span className="mini-cover-empty">
                   <IconWave width={24} height={24} />
@@ -326,7 +327,7 @@ export default function MiniPlayer({
                 }}
               >
                 <div className="mini-vol-track">
-                  <div className="mini-vol-fill" style={{ width: `${volume * 100}%` }} />
+                  <div className="mini-vol-fill" style={{ transform: `scaleX(${volume})` }} />
                 </div>
                 <span className="mini-vol-knob" style={{ left: `${volume * 100}%` }} />
               </div>
@@ -385,7 +386,7 @@ export default function MiniPlayer({
         aria-label="Перемотка"
       >
         <span className="mini-progress-track">
-          <span className="mini-progress-fill" style={{ width: `${percent}%` }} />
+          <span className="mini-progress-fill" style={{ transform: `scaleX(${percent / 100})` }} />
         </span>
       </button>
     </div>

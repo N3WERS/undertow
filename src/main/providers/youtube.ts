@@ -6,7 +6,7 @@
  *  - поиск              — yt-dlp flat (быстро, отдаёт длительность и канал);
  *  - аудио-URL          — быстрый InnerTube (IOS) с fallback на yt-dlp.
  */
-import { Innertube } from 'youtubei.js'
+import type { Innertube } from 'youtubei.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
@@ -69,7 +69,9 @@ function saveStreamCacheSoon(): void {
 
 async function client(): Promise<Innertube> {
   if (!clientPromise) {
-    clientPromise = Innertube.create({ retrieve_player: false, lang: 'ru', location: 'RU' })
+    clientPromise = import('youtubei.js').then(({ Innertube }) =>
+      Innertube.create({ retrieve_player: false, lang: 'ru', location: 'RU' })
+    )
   }
   return clientPromise
 }

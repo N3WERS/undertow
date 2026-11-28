@@ -1,8 +1,9 @@
-import { useState, type CSSProperties } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Track } from '../types'
 import { IconCheck, IconDisc, IconDownload, IconHeart, IconListPlus, IconNote, IconPlay, IconPlus, IconWave, IconX } from './Icons'
 import { removeOffline, saveTrack, useOffline } from '../offline'
 import ArtistLine from './ArtistLine'
+import { coverAt } from '../covers'
 
 interface Props {
   tracks: Track[]
@@ -41,6 +42,64 @@ interface Props {
   /** выбранные треки для массовых действий */
   selection?: Set<string>
   onSelect?: (track: Track, shiftKey: boolean) => void
+}
+
+const ROW_HEIGHT = 54
+const ROW_GAP = 2
+const VIRTUAL_MIN = 80
+const OVERSCAN = 6
+
+/** Окно видимых строк для длинных списков: DOM и обработчики только у экрана. */
+function useVirtualRange(count: number, enabled: boolean): {
+  listRef: React.RefObject<HTMLDivElement | null>
+  start: number
+  end: number
+} {
+  const listRef = useRef<HTMLDivElement | null>(null)
+  const [range, setRange] = useState({ start: 0, end: enabled ? Math.min(count, 24) : count })
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      setRange((prev) => (prev.start === 0 && prev.end === count ? prev : { start: 0, end: count }))
+      return
+    }
+    const list = listRef.current
+    if (!list) return
+    const scroll = list.closest('.scroll') as HTMLElement | null
+    if (!scroll) {
+      setRange((prev) => (prev.start === 0 && prev.end === count ? prev : { start: 0, end: count }))
+      return
+    }
+
+    let frame = 0
+    const step = ROW_HEIGHT + ROW_GAP
+    const measure = (): void => {
+      frame = 0
+      const listTop =
+        list.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+      const viewTop = scroll.scrollTop - listTop
+      const start = Math.max(0, Math.floor(viewTop / step) - OVERSCAN)
+      const visible = Math.ceil(scroll.clientHeight / step) + OVERSCAN * 2 + 2
+      const end = Math.min(count, start + visible)
+      setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
+    }
+    const onScroll = (): void => {
+      if (!frame) frame = requestAnimationFrame(measure)
+    }
+
+    measure()
+    scroll.addEventListener('scroll', onScroll, { passive: true })
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onScroll)
+    ro?.observe(scroll)
+    ro?.observe(list)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      scroll.removeEventListener('scroll', onScroll)
+      ro?.disconnect()
+    }
+  }, [count, enabled])
+
+  return { listRef, start: range.start, end: range.end }
 }
 
 function sourcePill(track: Track): { cls: string; label: string; title: string } {
@@ -92,9 +151,20 @@ export default function TrackList({
   const list = limit ? tracks.slice(0, limit) : tracks
   const [dragging, setDragging] = useState<number | null>(null)
   const offline = useOffline()
+  // Перетаскивание и маленькие списки оставляем обычными: виртуализация
+  // нужна только там, где строк действительно много.
+  const virtual = list.length >= VIRTUAL_MIN && !limit && !onReorder
+  const { listRef, start, end } = useVirtualRange(list.length, virtual)
+  const visible = virtual ? list.slice(start, end) : list
+  const step = ROW_HEIGHT + ROW_GAP
   return (
-    <div className={`tracks${ranked ? ' ranked' : ''}${onSelect ? ' selectable' : ''}`}>
-      {list.map((t, i) => {
+    <div
+      ref={listRef}
+      className={`tracks${ranked ? ' ranked' : ''}${onSelect ? ' selectable' : ''}${virtual ? ' virtual' : ''}`}
+      style={virtual ? { height: list.length * step - ROW_GAP } : undefined}
+    >
+      {visible.map((t, vi) => {
+        const i = virtual ? start + vi : vi
         const isCurrent = t.id === currentId
         const liked = likedIds?.has(t.id) ?? false
         const source = sourcePill(t)
@@ -112,6 +182,9 @@ export default function TrackList({
             className={`track${ranked ? ' ranked' : ''}${isCurrent ? ' playing' : ''}${
               t.playable ? '' : ' locked'
             }${dragging === i ? ' dragging' : ''}${selection?.has(t.id) ? ' selected' : ''}`}
+            style={virtual ? { top: i * step, height: ROW_HEIGHT } : undefined}
+            aria-posinset={virtual ? i + 1 : undefined}
+            aria-setsize={virtual ? list.length : undefined}
             onClick={(e) => {
               if (onSelect) onSelect(t, e.shiftKey)
               else activate()
@@ -176,7 +249,7 @@ export default function TrackList({
             </span>
 
             {t.coverUrl ? (
-              <img className="track-cover" src={t.coverUrl} alt="" loading="lazy" />
+              <img className="track-cover" src={coverAt(t.coverUrl, 80)} alt="" loading="lazy" decoding="async" />
             ) : (
               <span className="track-cover" />
             )}

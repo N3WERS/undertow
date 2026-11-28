@@ -202,7 +202,10 @@ export default function NowPlaying(p: Props) {
                 }}
               >
                 <div className="bar-track">
-                  <div className="bar-fill" style={{ width: `${pct}%` }} />
+                  <div
+                    className="bar-fill progress-fill"
+                    style={p.resolving ? undefined : { transform: `scaleX(${pct / 100})` }}
+                  />
                 </div>
               </div>
               <span>{fmtTime(duration)}</span>
@@ -255,7 +258,7 @@ export default function NowPlaying(p: Props) {
                   }}
                 >
                   <div className="bar-track">
-                    <div className="bar-fill" style={{ width: `${p.volume * 100}%` }} />
+                    <div className="bar-fill" style={{ transform: `scaleX(${p.volume})` }} />
                   </div>
                 </div>
               </div>

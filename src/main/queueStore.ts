@@ -11,7 +11,8 @@
  * двух недель очередь не восстанавливаем: за это время она уже неактуальна.
  */
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { promises as fsp } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Track } from './providers/types'
 
@@ -37,6 +38,8 @@ interface QueueFile {
 let state: QueueFile | null = null
 let loaded = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let writeChain: Promise<void> = Promise.resolve()
+let writeVersion = 0
 
 function filePath(): string {
   return join(app.getPath('userData'), 'queue.json')
@@ -122,15 +125,20 @@ function scheduleSave(): void {
 export function flush(): void {
   if (!state) return
   const file = filePath()
-  try {
-    const dir = dirname(file)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    const tmp = `${file}.tmp`
-    writeFileSync(tmp, JSON.stringify(state), { encoding: 'utf8' })
-    renameSync(tmp, file)
-  } catch {
-    /* диск недоступен — переживём, очередь просто не сохранится */
-  }
+  const payload = JSON.stringify(state)
+  const version = ++writeVersion
+  writeChain = writeChain
+    .then(async () => {
+      if (version !== writeVersion) return
+      const dir = dirname(file)
+      if (!existsSync(dir)) await fsp.mkdir(dir, { recursive: true })
+      const tmp = `${file}.tmp`
+      await fsp.writeFile(tmp, payload, { encoding: 'utf8' })
+      await fsp.rename(tmp, file)
+    })
+    .catch(() => {
+      /* диск недоступен — переживём, очередь просто не сохранится */
+    })
 }
 
 /** Полная замена сохранённой очереди (при изменении состава). */
@@ -157,6 +165,7 @@ export function load(): SavedQueue | null {
 }
 
 export function clear(): void {
+  writeVersion += 1
   state = null
   loaded = true
   try {

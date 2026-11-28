@@ -9,7 +9,8 @@
  * не дёргала диск на каждый клик.
  */
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { promises as fsp } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Track } from './providers/types'
 
@@ -45,6 +46,7 @@ const FILE_VERSION = 1 as const
 let cache: LibraryFile | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let updatedAt: number | null = null
+let writeChain: Promise<void> = Promise.resolve()
 
 function filePath(): string {
   return join(app.getPath('userData'), 'library.json')
@@ -117,16 +119,20 @@ function scheduleSave(): void {
 export function flush(): void {
   const data = load()
   const file = filePath()
-  try {
-    const dir = dirname(file)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    const tmp = `${file}.tmp`
-    writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: 'utf8' })
-    renameSync(tmp, file)
-    updatedAt = Date.now()
-  } catch (e) {
-    console.error('[library] не удалось сохранить:', e instanceof Error ? e.message : e)
-  }
+  const payload = JSON.stringify(data)
+  // Запись не должна блокировать event loop во время переключения трека.
+  writeChain = writeChain
+    .then(async () => {
+      const dir = dirname(file)
+      if (!existsSync(dir)) await fsp.mkdir(dir, { recursive: true })
+      const tmp = `${file}.tmp`
+      await fsp.writeFile(tmp, payload, { encoding: 'utf8' })
+      await fsp.rename(tmp, file)
+      updatedAt = Date.now()
+    })
+    .catch((e) => {
+      console.error('[library] не удалось сохранить:', e instanceof Error ? e.message : e)
+    })
 }
 
 /* --------------------------------- лайки --------------------------------- */

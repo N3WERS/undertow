@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Track } from '../types'
+import { coverAt } from '../covers'
 import type { RepeatMode } from '../audio/engine'
 import { fmtTime } from './TrackList'
 import { IconClose, IconRepeat, IconShuffle, IconTrash, IconWave } from './Icons'
@@ -52,7 +53,7 @@ export default function QueuePanel({
       <div className="queue-head">
         <span className={`panel-art${current?.coverUrl ? '' : ' empty'}`}>
           {current?.coverUrl ? (
-            <img src={current.coverUrl} alt="" />
+            <img src={coverAt(current.coverUrl, 160)} alt="" />
           ) : (
             <IconWave width={18} height={18} />
           )}
@@ -152,7 +153,7 @@ export default function QueuePanel({
                   <i />
                   <i />
                 </span>
-                {t.coverUrl ? <img className="queue-cover" src={t.coverUrl} alt="" loading="lazy" /> : <span className="queue-cover" />}
+                {t.coverUrl ? <img className="queue-cover" src={coverAt(t.coverUrl, 80)} alt="" loading="lazy" decoding="async" /> : <span className="queue-cover" />}
                 <span className="queue-text">
                   <span className="queue-name">
                     {current ? <span className={`eq small${playing ? '' : ' paused'}`}><i /><i /><i /></span> : null}

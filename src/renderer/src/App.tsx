@@ -1,21 +1,21 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar, { type View } from './components/Sidebar'
 import HomeView from './components/Home'
-import FlowView from './components/FlowView'
-import SearchViewBase from './components/SearchView'
-import CommandPalette from './components/CommandPalette'
-import Settings from './components/Settings'
+const FlowView = lazy(() => import('./components/FlowView'))
+const SearchViewBase = lazy(() => import('./components/SearchView'))
+const CommandPalette = lazy(() => import('./components/CommandPalette'))
+const Settings = lazy(() => import('./components/Settings'))
 import LibraryView from './components/LibraryView'
-import SavedView from './components/SavedView'
-import QueuePanel from './components/QueuePanel'
-import BrowseView from './components/BrowseView'
-import ReleasesView from './components/ReleasesView'
-import PlaylistsView from './components/PlaylistsView'
-import PlaylistPicker from './components/PlaylistPicker'
-import LyricsPanel from './components/LyricsPanel'
+const SavedView = lazy(() => import('./components/SavedView'))
+const QueuePanel = lazy(() => import('./components/QueuePanel'))
+const BrowseView = lazy(() => import('./components/BrowseView'))
+const ReleasesView = lazy(() => import('./components/ReleasesView'))
+const PlaylistsView = lazy(() => import('./components/PlaylistsView'))
+const PlaylistPicker = lazy(() => import('./components/PlaylistPicker'))
+const LyricsPanel = lazy(() => import('./components/LyricsPanel'))
 import PlayerBar from './components/PlayerBar'
-import NowPlaying from './components/NowPlaying'
-import MiniPlayer from './components/MiniPlayer'
+const NowPlaying = lazy(() => import('./components/NowPlaying'))
+const MiniPlayer = lazy(() => import('./components/MiniPlayer'))
 import CloseDialog from './components/CloseDialog'
 import { IconShrink } from './components/Icons'
 import { AudioEngine, type RepeatMode, type Snapshot } from './audio/engine'
@@ -122,6 +122,17 @@ export default function App() {
     return () => {
       alive = false
       off()
+    }
+  }, [])
+
+  // Скрытое окно не должно крутить декоративные CSS-анимации.
+  useEffect(() => {
+    const sync = () => document.documentElement.classList.toggle('app-hidden', document.hidden)
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      document.removeEventListener('visibilitychange', sync)
+      document.documentElement.classList.remove('app-hidden')
     }
   }, [])
 
@@ -440,15 +451,19 @@ export default function App() {
     void reloadLibrary()
     void window.undertow.albumsList().then(setSavedAlbums).catch(() => setSavedAlbums([]))
     void window.undertow.hiddenSections().then(setHidden).catch(() => setHidden([]))
-    // старые записи лежали без исполнителей — дозаполняем в фоне, чтобы
-    // заработали ссылки на артистов в истории и избранном
-    void window.undertow
-      .enrichLibrary()
-      .then((snap) => setLib(snap))
-      .catch(() => {
-        /* без Яндекса обогащать нечем */
-      })
     void window.undertow.state().then(setState).catch(() => setState(null))
+
+    // Обогащение библиотеки ходит в Яндекс пачками и не нужно для первого
+    // кадра: даём главной и плееру спокойно появиться.
+    const timer = window.setTimeout(() => {
+      void window.undertow
+        .enrichLibrary()
+        .then((snap) => setLib(snap))
+        .catch(() => {
+          /* без Яндекса обогащать нечем */
+        })
+    }, 2500)
+    return () => window.clearTimeout(timer)
   }, [loadHome, reloadLibrary])
 
   const likedIds = useMemo(() => new Set(lib.likes.map((t) => t.id)), [lib.likes])
@@ -582,6 +597,26 @@ export default function App() {
   // Ручной пропуск уже учтён в flow.feedback — не считаем его второй раз.
   const suppressSkipRef = useRef<string | null>(null)
 
+  // Прогрев — это несколько тяжёлых resolve. Держим поколение: при смене
+  // очереди старые таймеры больше не стреляют и не отбирают слоты у нового трека.
+  const prewarmGen = useRef(0)
+  const prewarmTimers = useRef<number[]>([])
+  const cancelPrewarm = useCallback(() => {
+    prewarmGen.current += 1
+    for (const timer of prewarmTimers.current) window.clearTimeout(timer)
+    prewarmTimers.current = []
+  }, [])
+  const schedulePrewarm = useCallback((t: Track, delay: number) => {
+    if (document.hidden) return
+    const gen = prewarmGen.current
+    const timer = window.setTimeout(() => {
+      prewarmTimers.current = prewarmTimers.current.filter((id) => id !== timer)
+      if (gen !== prewarmGen.current) return
+      void window.undertow.prewarm(t).catch(() => undefined)
+    }, delay)
+    prewarmTimers.current.push(timer)
+  }, [])
+
   useEffect(() => {
     const engine = new AudioEngine({
       onSnapshot: (s) => {
@@ -590,7 +625,7 @@ export default function App() {
           lastListenRef.current.time = s.time
           lastListenRef.current.duration = s.duration || current.durationSec || 0
         }
-        setProgress(s.time, s.duration, s.rms)
+        setProgress(s.time, s.duration, s.rms, s.trackId)
         // в state попадают только редкие поля: время и уровень громкости идут
         // через отдельный стор, чтобы не перерисовывать списки на каждом тике
         setSnap((prev) =>
@@ -623,7 +658,7 @@ export default function App() {
         lastListenRef.current = { track: t, time: 0, duration: t?.durationSec ?? 0 }
         setTrack(t)
         // полоска не должна показывать позицию прошлого трека, пока грузится новый
-        setProgress(0, t?.durationSec ?? 0, 0)
+        setProgress(0, t?.durationSec ?? 0, 0, t?.id ?? null)
         setSnap((prev) => ({ ...prev, duration: t?.durationSec ?? 0, trackId: t?.id ?? null }))
         if (t) {
           setResolving(false)
@@ -684,7 +719,7 @@ export default function App() {
         const track = saved.tracks[saved.index]
         // очередь помним, но позицию — нет: после запуска трек всегда с начала
         engine.restore(saved.tracks, saved.index, saved.shuffled)
-        setProgress(0, track?.durationSec ?? 0, 0)
+        setProgress(0, track?.durationSec ?? 0, 0, track?.id ?? null)
         queueMetaRef.current = { index: saved.index, shuffled: saved.shuffled }
         setTrack(track ?? null)
         setQueueState({ queue: saved.tracks, index: saved.index, shuffled: saved.shuffled })
@@ -699,23 +734,20 @@ export default function App() {
         setResolving(false)
         setSource(track?.provider === 'yandex' ? 'yandex' : 'youtube')
         toastRef.current('Продолжим с того места — нажми ▶')
-        // пока пользователь читает экран, готовим ссылки на текущий и следующий
-        // трек: тогда ▶ и «дальше» стартуют почти без паузы
-        if (track) window.setTimeout(() => void window.undertow.prewarm(track).catch(() => undefined), 500)
+        // пока пользователь читает экран, готовим только текущий и следующий:
+        // остальные вперёд греет сам движок, когда трек уже играет
+        if (track) schedulePrewarm(track, 500)
         const nextTrack = saved.tracks[saved.index + 1]
-        if (nextTrack) window.setTimeout(() => void window.undertow.prewarm(nextTrack).catch(() => undefined), 3000)
-        for (let ahead = 2; ahead <= 4; ahead += 1) {
-          const t = saved.tracks[saved.index + ahead]
-          if (t) window.setTimeout(() => void window.undertow.prewarm(t).catch(() => undefined), 3500 + ahead * 700)
-        }
+        if (nextTrack) schedulePrewarm(nextTrack, 2500)
       } catch {
         /* сохранённой очереди нет — обычный пустой старт */
       }
     })()
     return () => {
       alive = false
+      cancelPrewarm()
     }
-  }, [])
+  }, [cancelPrewarm, schedulePrewarm])
 
   useEffect(() => {
     engineRef.current?.setOptions({ crossfadeSec: crossfade })
@@ -823,6 +855,7 @@ export default function App() {
   }, [])
 
   const playTrack = useCallback((t: Track, list: Track[]) => {
+    cancelPrewarm()
     const playable = list.filter((x) => x.playable)
     const at = playable.findIndex((x) => x.id === t.id)
     setTrack(t)
@@ -832,10 +865,11 @@ export default function App() {
     flowRef.current = false
     setFlowActive(false)
     void engineRef.current?.setQueue(playable, at >= 0 ? at : 0)
-  }, [])
+  }, [cancelPrewarm])
 
   /** Переход к треку внутри уже запущенного «Течения», без его выключения. */
   const playFlowTrack = useCallback((t: Track, list: Track[]) => {
+    cancelPrewarm()
     const playable = list.filter((x) => x.playable)
     const at = playable.findIndex((x) => x.id === t.id)
     setTrack(t)
@@ -845,7 +879,7 @@ export default function App() {
     flowRef.current = true
     setFlowActive(true)
     void engineRef.current?.setQueue(playable, at >= 0 ? at : 0)
-  }, [])
+  }, [cancelPrewarm])
 
   const playSavedAlbum = useCallback(
     (album: SavedAlbum) => {
@@ -936,7 +970,7 @@ export default function App() {
         engine.restore(flow.queue, flow.index, false)
         const current = flow.queue[flow.index] ?? null
         setTrack(current)
-        setProgress(0, current?.durationSec ?? 0, 0)
+        setProgress(0, current?.durationSec ?? 0, 0, current?.id ?? null)
         setQueueState({ queue: flow.queue, index: flow.index, shuffled: false })
       } else if (flow.tracks.length) {
         playTrack(flow.tracks[0], flow.tracks)
@@ -1033,9 +1067,9 @@ export default function App() {
     }
     let alive = true
     void window.undertow
-      .flowInfo()
-      .then((info) => {
-        if (alive) setFlowRoute(info.routes[track.id] ?? null)
+      .flowRoute(track.id)
+      .then((route) => {
+        if (alive) setFlowRoute(route)
       })
       .catch(() => undefined)
     return () => {
@@ -1198,6 +1232,11 @@ export default function App() {
   const warmedRef = useRef<string[]>([])
   const pendingWarmRef = useRef<Track | null>(null)
   const warmingRef = useRef(false)
+
+  useEffect(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    pendingWarmRef.current = null
+  }, [snap.trackId])
 
   const processWarm = useCallback(async (): Promise<void> => {
     if (warmingRef.current) return
@@ -1478,6 +1517,7 @@ export default function App() {
         />
 
         <main className="content">
+          <Suspense fallback={<div className="view-loading" />}>
           {browse && (
             <BrowseView
               kind={browse.kind}
@@ -1677,6 +1717,7 @@ export default function App() {
               onToast={toast}
             />
           )}
+          </Suspense>
         </main>
       </div>
 
@@ -1764,6 +1805,7 @@ export default function App() {
         }}
       />
 
+      <Suspense fallback={null}>
       <CommandPalette
         open={palette !== null}
         mode={palette ?? 'all'}
@@ -1974,6 +2016,7 @@ export default function App() {
           </div>
         ))}
       </div>
+      </Suspense>
     </div>
   )
 }

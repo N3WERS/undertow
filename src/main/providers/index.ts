@@ -218,6 +218,10 @@ export function flowInfo(): flow.FlowInfo {
   return flow.info()
 }
 
+export function flowRoute(trackId: string): flow.FlowRoute | null {
+  return flow.route(trackId)
+}
+
 export function flowFeedback(
   action: flow.FlowFeedback,
   track: Track
@@ -376,9 +380,14 @@ export async function pickFallback(track: Track, candidate: fallback.FallbackCan
  * поиск копии, который иначе занял бы секунды после клика.
  */
 const prewarming = new Set<string>()
+/** Недавно прогретые треки: повторный prewarm только тратит CPU и сеть. */
+const prewarmedAt = new Map<string, number>()
+const PREWARM_TTL = 90_000
 
 export async function prewarm(track: Track): Promise<void> {
   if (prewarming.has(track.id)) return
+  const at = prewarmedAt.get(track.id) ?? 0
+  if (Date.now() - at < PREWARM_TTL) return
   prewarming.add(track.id)
   try {
     if (track.provider === 'yandex' && !yandexReady()) {
@@ -390,6 +399,11 @@ export async function prewarm(track: Track): Promise<void> {
     // прогрев — необязательная оптимизация
   } finally {
     prewarming.delete(track.id)
+    prewarmedAt.set(track.id, Date.now())
+    if (prewarmedAt.size > 400) {
+      const oldest = [...prewarmedAt.entries()].sort((a, b) => a[1] - b[1])[0]
+      if (oldest) prewarmedAt.delete(oldest[0])
+    }
   }
 }
 

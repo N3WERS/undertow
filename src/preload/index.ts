@@ -60,6 +60,7 @@ const api = {
   playlistsExport: () => ipcRenderer.invoke('playlists:export'),
   flowMore: () => ipcRenderer.invoke('flow:more'),
   flowInfo: () => ipcRenderer.invoke('flow:info'),
+  flowRoute: (trackId: string) => ipcRenderer.invoke('flow:route', trackId),
   flowSeeds: () => ipcRenderer.invoke('flow:seeds'),
   flowTracks: () => ipcRenderer.invoke('flow:tracks'),
   flowDiscoveries: () => ipcRenderer.invoke('flow:discoveries'),

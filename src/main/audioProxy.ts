@@ -11,6 +11,7 @@
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { pipeline } from 'node:stream'
 import { request as httpsRequest } from 'node:https'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
@@ -220,9 +221,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   }
 
   const ctrl = new AbortController()
-  res.on('close', () => ctrl.abort())
+  let up: IncomingMessage | null = null
+  res.on('close', () => {
+    ctrl.abort()
+    up?.destroy()
+  })
 
-  let up: IncomingMessage
   try {
     const rangeHeader = req.headers.range
     let range = boundOpenRange(rangeHeader, upstream)
@@ -269,33 +273,34 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       up = await openUpstream(upstream, range, ctrl.signal, 0)
     }
 
+    const source = up
+    if (!source) throw new Error('upstream не открылся')
     for (const h of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
-      const v = up.headers[h]
+      const v = source.headers[h]
       if (typeof v === 'string') res.setHeader(h, v)
     }
-    const upstreamCt = up.headers['content-type']
+    const upstreamCt = source.headers['content-type']
     const knownCt = parsed.searchParams.get('ct')
     // Яндекс отдаёт mp3 как application/octet-stream — подменяем на известный тип,
     // иначе браузерный декодер может отказаться от потока
     const ct =
       knownCt && (!upstreamCt || upstreamCt.startsWith('application/octet-stream')) ? knownCt : upstreamCt || 'application/octet-stream'
     res.setHeader('Content-Type', ct)
-    res.writeHead(up.statusCode ?? 502)
+    res.writeHead(source.statusCode ?? 502)
 
     if (req.method === 'HEAD') {
-      up.resume()
+      source.resume()
       res.end()
       return
     }
 
-    up.setTimeout(20_000, () => {
+    source.setTimeout(20_000, () => {
       log('proxy stall', upstream.hostname)
-      up.destroy(new Error('upstream stalled'))
+      source.destroy(new Error('upstream stalled'))
     })
-    up.on('error', () => {
-      if (!res.writableEnded) res.end()
+    pipeline(source, res, () => {
+      /* закрытие клиента/апстрима уже обработано выше */
     })
-    up.pipe(res)
   } catch (e) {
     if (res.destroyed) return
     log('proxy FAIL', upstream.hostname, (e instanceof Error ? e.message : String(e)).slice(0, 160))

@@ -1,8 +1,12 @@
 import { app } from 'electron'
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 let file: string | null = null
+let buffer: string[] = []
+let timer: ReturnType<typeof setTimeout> | null = null
+let writeChain: Promise<void> = Promise.resolve()
 
 function logFile(): string {
   if (file) return file
@@ -26,10 +30,31 @@ function rotate(path: string): void {
   }
 }
 
+function flush(): void {
+  if (!buffer.length) return
+  const text = buffer.join('')
+  buffer = []
+  const path = logFile()
+  writeChain = writeChain
+    .then(async () => {
+      rotate(path)
+      await appendFile(path, text, 'utf8')
+    })
+    .catch(() => {
+      // молча: логирование не должно ронять приложение
+    })
+}
+
+function schedule(): void {
+  if (timer) return
+  timer = setTimeout(() => {
+    timer = null
+    flush()
+  }, 500)
+}
+
 export function log(...parts: unknown[]): void {
   try {
-    const path = logFile()
-    rotate(path)
     const text = parts
       .map((p) => {
         if (typeof p === 'string') return p
@@ -40,7 +65,9 @@ export function log(...parts: unknown[]): void {
         }
       })
       .join(' ')
-    appendFileSync(path, `${new Date().toISOString()} ${text}\n`, 'utf8')
+    buffer.push(`${new Date().toISOString()} ${text}\n`)
+    if (buffer.length >= 120) flush()
+    else schedule()
   } catch {
     // молча: логирование не должно ронять приложение
   }

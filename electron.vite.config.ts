@@ -23,6 +23,17 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react()],
-    define: { __APP_VERSION__: JSON.stringify(pkg.version) }
+    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/react')) return 'react'
+            if (id.includes('node_modules/hls.js')) return 'hls'
+            return undefined
+          }
+        }
+      }
+    }
   }
 })

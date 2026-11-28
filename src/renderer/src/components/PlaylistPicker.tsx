@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { PlaylistSummary, Track } from '../types'
 import { IconListPlus, IconPlay, IconX } from './Icons'
+import { coverAt } from '../covers'
 
 interface Props {
   track: Track | null
@@ -89,7 +90,7 @@ export default function PlaylistPicker({ track, onClose, onAdded, onToast }: Pro
         </div>
 
         <div className="picker-track">
-          {track.coverUrl ? <img src={track.coverUrl} alt="" /> : <span className="picker-cover" />}
+          {track.coverUrl ? <img src={coverAt(track.coverUrl, 160)} alt="" /> : <span className="picker-cover" />}
           <div>
             <b>{track.title}</b>
             <span>{track.artist}</span>
@@ -102,7 +103,7 @@ export default function PlaylistPicker({ track, onClose, onAdded, onToast }: Pro
           ) : items.length ? (
             items.map((p) => (
               <button key={p.id} className="picker-row" onClick={() => void addTo(p)} disabled={busy}>
-                {p.coverUrl ? <img src={p.coverUrl} alt="" /> : <span className="picker-row-cover" />}
+                {p.coverUrl ? <img src={coverAt(p.coverUrl, 160)} alt="" /> : <span className="picker-row-cover" />}
                 <span className="picker-row-name">{p.title}</span>
                 <span className="picker-row-count">{p.count}</span>
                 <IconPlay width={12} height={12} />

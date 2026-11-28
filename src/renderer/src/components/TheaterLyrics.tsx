@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Lyrics, Track } from '../types'
-import { useProgress } from '../audio/progress'
+import { useProgressSlow } from '../audio/progress'
 
 interface Props {
   track: Track
@@ -9,7 +9,7 @@ interface Props {
 
 /** Текст прямо в боковой панели полноэкранного плеера. */
 export default function TheaterLyrics({ track, onSeek }: Props) {
-  const { time } = useProgress()
+  const { time } = useProgressSlow(200)
   const [data, setData] = useState<Lyrics | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
   const activeRef = useRef<HTMLButtonElement | null>(null)

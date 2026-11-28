@@ -427,6 +427,7 @@ export interface UndertowApi {
   playlistsExport(): Promise<string | null>
   flowMore(): Promise<Track[]>
   flowInfo(): Promise<FlowInfo>
+  flowRoute(trackId: string): Promise<FlowRoute | null>
   flowFeedback(action: 'more' | 'less' | 'skipArtist', track: Track): Promise<{ tracks: Track[] }>
   flowListen(action: 'completed' | 'skipped', track: Track, playedSeconds: number): Promise<void>
   flowLast(): Promise<LastFlowInfo>

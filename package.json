@@ -1,6 +1,6 @@
 {
   "name": "undertow",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "type": "module",
   "description": "Undertow — personal music streaming client",
@@ -20,21 +20,27 @@
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
+    "hls.js": "^1.7.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"
   },
   "dependencies": {
     "discord-rpc": "^4.0.1",
     "electron-updater": "^6.8.11",
-    "hls.js": "^1.7.4",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
     "youtubei.js": "^18.3.0"
   },
   "author": "N3WERS",
   "build": {
     "appId": "ai.n3wers.undertow",
     "productName": "Undertow",
+    "compression": "maximum",
+    "electronLanguages": [
+      "ru",
+      "en-US"
+    ],
+    "npmRebuild": false,
     "copyright": "by N3WERS",
     "directories": {
       "output": "release",

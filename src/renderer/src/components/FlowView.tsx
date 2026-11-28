@@ -164,6 +164,7 @@ export default function FlowView({
     if (!active) return
     let aliveFetch = true
     const refresh = () => {
+      if (document.hidden) return
       void window.undertow
         .flowInfo()
         .then((info) => {
@@ -174,7 +175,7 @@ export default function FlowView({
     refresh()
     // статистика пополняется после фактического старта трека — обновляем
     // её не на каждом тике, а редким опросом, пока течение живо
-    const timer = window.setInterval(refresh, 7000)
+    const timer = window.setInterval(refresh, 15000)
     return () => {
       aliveFetch = false
       window.clearInterval(timer)
