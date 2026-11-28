@@ -28,13 +28,20 @@ const api = {
   queueSave: (state: unknown) => ipcRenderer.invoke('queue:save', state),
   queueClear: () => ipcRenderer.invoke('queue:clear'),
   flowStart: (options?: unknown) => ipcRenderer.invoke('flow:start', options),
-  flowGenres: () => ipcRenderer.invoke('flow:genres'),
   flowFeedback: (action: string, track: unknown) =>
     ipcRenderer.invoke('flow:feedback', action, track),
   flowNovelty: (value: number) => ipcRenderer.invoke('flow:novelty', value),
+  flowResetTaste: () => ipcRenderer.invoke('flow:reset-taste'),
   flowSeed: (action: 'include' | 'exclude', name: string) =>
     ipcRenderer.invoke('flow:seed', action, name),
   flowPlayed: (track: unknown) => ipcRenderer.invoke('flow:played', track),
+  flowListen: (action: 'completed' | 'skipped', track: unknown, playedSeconds: number) =>
+    ipcRenderer.invoke('flow:listen', action, track, playedSeconds),
+  flowLast: () => ipcRenderer.invoke('flow:last'),
+  flowResume: () => ipcRenderer.invoke('flow:resume'),
+  flowQueue: (queue: unknown, index: number) => ipcRenderer.invoke('flow:queue', queue, index),
+  flowAnchor: (action: 'pin' | 'replace' | 'remove', id: string) =>
+    ipcRenderer.invoke('flow:anchor', action, id),
   genreForArtist: (name: string, yandexId?: string) =>
     ipcRenderer.invoke('genres:artist', name, yandexId),
   lyrics: (track: unknown) => ipcRenderer.invoke('lyrics:get', track),

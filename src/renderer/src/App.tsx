@@ -31,6 +31,7 @@ import type {
   ChartScope,
   DpiStatus,
   FlowOptions,
+  FlowRoute,
   Section,
   TopChart,
   Track,
@@ -572,9 +573,23 @@ export default function App() {
 
   /* ------------------------------ движок звука ---------------------------- */
 
+  const flowRef = useRef(false)
+  const lastListenRef = useRef<{ track: Track | null; time: number; duration: number }>({
+    track: null,
+    time: 0,
+    duration: 0
+  })
+  // Ручной пропуск уже учтён в flow.feedback — не считаем его второй раз.
+  const suppressSkipRef = useRef<string | null>(null)
+
   useEffect(() => {
     const engine = new AudioEngine({
       onSnapshot: (s) => {
+        const current = lastListenRef.current.track
+        if (current && current.id === s.trackId) {
+          lastListenRef.current.time = s.time
+          lastListenRef.current.duration = s.duration || current.durationSec || 0
+        }
         setProgress(s.time, s.duration, s.rms)
         // в state попадают только редкие поля: время и уровень громкости идут
         // через отдельный стор, чтобы не перерисовывать списки на каждом тике
@@ -586,6 +601,26 @@ export default function App() {
         if (s.duration > 0) setResolving(false)
       },
       onTrackChange: (t) => {
+        const prev = lastListenRef.current
+        const manualSkip = prev.track?.id && suppressSkipRef.current === prev.track.id
+        if (manualSkip) suppressSkipRef.current = null
+        if (!manualSkip && flowRef.current && prev.track && prev.track.id !== t?.id) {
+          const duration = prev.duration || prev.track.durationSec || 0
+          if (duration > 0) {
+            const completed = prev.time >= duration * 0.8 || duration - prev.time <= 3
+            const skipped = prev.time < Math.min(20, duration * 0.25)
+            if (completed) {
+              void window.undertow
+                .flowListen('completed', prev.track, prev.time)
+                .catch(() => undefined)
+            } else if (skipped) {
+              void window.undertow
+                .flowListen('skipped', prev.track, prev.time)
+                .catch(() => undefined)
+            }
+          }
+        }
+        lastListenRef.current = { track: t, time: 0, duration: t?.durationSec ?? 0 }
         setTrack(t)
         // полоска не должна показывать позицию прошлого трека, пока грузится новый
         setProgress(0, t?.durationSec ?? 0, 0)
@@ -604,6 +639,7 @@ export default function App() {
         setQueueState({ queue, index, shuffled })
         queueMetaRef.current = { index, shuffled }
         persistQueue(queue, index, shuffled)
+        if (flowRef.current) void window.undertow.flowQueue(queue, index).catch(() => undefined)
         refillRadio(queue.length, index)
         refillFlow(queue.length, index)
       },
@@ -751,9 +787,9 @@ export default function App() {
   }, [])
 
   // «Течение»: пока оно активно, очередь дозаправляется после каждого трека
-  const flowRef = useRef(false)
   const flowBusy = useRef(false)
   const [flowActive, setFlowActive] = useState(false)
+  const [flowRoute, setFlowRoute] = useState<FlowRoute | null>(null)
   const [flowSaving, setFlowSaving] = useState(false)
   const [releases, setReleases] = useState<{
     loading: boolean
@@ -876,10 +912,36 @@ export default function App() {
     try {
       const flow = await window.undertow.flowStart(options)
       if (!flow.tracks.length) throw new Error('Не удалось собрать поток')
+      flowRef.current = true
       playTrack(flow.tracks[0], flow.tracks)
       flowRef.current = true
       setFlowActive(true)
+      void window.undertow.flowQueue(flow.tracks, 0).catch(() => undefined)
       toast(`${flow.title}: ${flow.tracks.length} треков, дальше подмешается само`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setFlowLoading(false)
+    }
+  }, [playTrack, toast])
+
+  const resumeFlow = useCallback(async () => {
+    setFlowLoading(true)
+    try {
+      const flow = await window.undertow.flowResume()
+      flowRef.current = true
+      setFlowActive(true)
+      const engine = engineRef.current
+      if (flow.queue.length && engine) {
+        engine.restore(flow.queue, flow.index, false)
+        const current = flow.queue[flow.index] ?? null
+        setTrack(current)
+        setProgress(0, current?.durationSec ?? 0, 0)
+        setQueueState({ queue: flow.queue, index: flow.index, shuffled: false })
+      } else if (flow.tracks.length) {
+        playTrack(flow.tracks[0], flow.tracks)
+      }
+      toast(`Продолжаю прошлое течение: треков ${flow.info.stats.tracks || flow.tracks.length}`)
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error')
     } finally {
@@ -936,9 +998,17 @@ export default function App() {
         if (action === 'more') {
           toast(res.tracks.length ? 'Добавил ещё такого же' : 'Этот артист будет звучать чаще')
         } else if (action === 'less') {
+          suppressSkipRef.current = t.id
+          window.setTimeout(() => {
+            if (suppressSkipRef.current === t.id) suppressSkipRef.current = null
+          }, 3000)
           toast('Больше не поставлю этот трек')
           void engineRef.current?.next()
         } else {
+          suppressSkipRef.current = t.id
+          window.setTimeout(() => {
+            if (suppressSkipRef.current === t.id) suppressSkipRef.current = null
+          }, 3000)
           engineRef.current?.removeUpcomingByArtist(t.artist)
           toast(`Пропускаю ${t.artist || 'артиста'} в этом течении`)
           void engineRef.current?.next()
@@ -954,6 +1024,24 @@ export default function App() {
     if (!flowActive || !track) return
     void window.undertow.flowPlayed(track).catch(() => undefined)
   }, [flowActive, track])
+
+  // Причина, по которой играет текущий трек — для плашки в мини-плеере.
+  useEffect(() => {
+    if (!flowActive || !track) {
+      setFlowRoute(null)
+      return
+    }
+    let alive = true
+    void window.undertow
+      .flowInfo()
+      .then((info) => {
+        if (alive) setFlowRoute(info.routes[track.id] ?? null)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [flowActive, track?.id])
 
   const [radioLoading, setRadioLoading] = useState(false)
   /** «похожее»: радио от конкретного трека (в отличие от радио артиста) */
@@ -1466,6 +1554,7 @@ export default function App() {
               active={flowActive}
               loading={flowLoading}
               onStart={(options) => void startFlow(options)}
+              onResume={() => void resumeFlow()}
               onPlayFlow={playFlowTrack}
               onToggle={toggle}
               onArtistRadio={(name) => void startRadio({ name })}
@@ -1840,6 +1929,8 @@ export default function App() {
           queueIndex={queueState.index}
           shuffled={queueState.shuffled}
           repeat={repeat}
+          flowActive={flowActive}
+          flowRoute={flowRoute}
           liked={track ? likedIds.has(track.id) : false}
           onLike={() => track && toggleLike(track)}
           onToggle={toggle}

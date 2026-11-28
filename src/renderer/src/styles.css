@@ -11219,3 +11219,250 @@ img {
   background: rgba(255, 138, 138, 0.09) !important;
   color: #ffb3b3 !important;
 }
+
+/* ==================== Течение: управление и телеметрия ==================== */
+
+.flow-anchor {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: default;
+}
+
+.flow-anchor-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.flow-anchor:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.flow-anchor.pinned {
+  border-color: rgba(55, 214, 207, 0.25);
+}
+
+.flow-anchor-actions {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+
+.flow-anchor:hover .flow-anchor-actions,
+.flow-anchor:focus-within .flow-anchor-actions,
+.flow-anchor.pinned .flow-anchor-actions {
+  opacity: 1;
+}
+
+.flow-anchor-actions button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  background: rgba(8, 13, 19, 0.9);
+  color: var(--text-mute);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.flow-anchor-actions button:hover,
+.flow-anchor-actions button.on {
+  border-color: rgba(55, 214, 207, 0.4);
+  color: #9debe5;
+}
+
+.flow-anchor-actions button:last-child:hover {
+  border-color: rgba(255, 138, 138, 0.4);
+  color: #ffb3b3;
+}
+
+.flow-route-hop {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(141, 124, 246, 0.12);
+  color: #b5a9ff;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.flow-novelty {
+  margin: 16px 0 4px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(7, 12, 18, 0.38);
+}
+
+.flow-novelty-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.flow-novelty-head b {
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.flow-novelty-head span {
+  color: var(--text-dim);
+  font-size: 10.5px;
+}
+
+.flow-novelty input[type='range'] {
+  width: 100%;
+  accent-color: #37d6cf;
+  cursor: pointer;
+}
+
+.flow-novelty-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 9.5px;
+}
+
+.flow-resume {
+  margin-top: 10px;
+}
+
+.flow-anchor:hover .flow-anchor-role,
+.flow-anchor.pinned .flow-anchor-role {
+  opacity: 0;
+}
+
+.flow-taste-reset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.flow-taste-reset > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.flow-taste-reset b {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.flow-taste-reset span {
+  color: var(--text-dim);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.flow-taste-reset button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(7, 12, 18, 0.45);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.flow-taste-reset button:hover {
+  border-color: rgba(255, 138, 138, 0.35);
+  color: #ffb3b3;
+}
+
+.flow-taste-reset button.confirm {
+  border-color: rgba(255, 138, 138, 0.5);
+  background: rgba(255, 138, 138, 0.08);
+  color: #ffb3b3;
+}
+
+/* Мини-плеер: откуда играет трек */
+.mini-flow-badge {
+  flex: none;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  border: 1px solid rgba(94, 234, 212, 0.2);
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.13), rgba(147, 168, 255, 0.08));
+  color: #9df5ed;
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  box-shadow: 0 0 10px rgba(94, 234, 212, 0.06);
+}
+
+.mini-flow-why {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  color: rgba(154, 171, 192, 0.66);
+  font-size: 9.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mini-flow-why-label {
+  flex: none;
+  color: rgba(94, 234, 212, 0.55);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mini-flow-why-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-flow-tier {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(154, 171, 192, 0.62);
+  font-size: 7.5px;
+  letter-spacing: 0.03em;
+}

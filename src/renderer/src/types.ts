@@ -324,8 +324,6 @@ export interface PlayerReport {
 export type FlowTier = 'hit' | 'recent' | 'deep'
 
 export interface FlowOptions {
-  genres?: string[]
-  excludeGenres?: string[]
   novelty?: number
   includeSeeds?: string[]
   excludeSeeds?: string[]
@@ -342,29 +340,40 @@ export interface FlowRoute {
   anchor?: string
   /** 1 — прямо от якоря, 2 — второй шаг по трек-графу */
   hop?: number
+  anchorId?: string
   tier?: FlowTier
 }
 
 export interface FlowAnchor {
   track: Track
   role: 'like' | 'top' | 'middle' | 'history' | 'unexpected' | 'manual'
+  pinned?: boolean
 }
 
 export interface FlowStats {
   tracks: number
   seconds: number
   newArtists: number
+  started: number
+  completed: number
+  skipped: number
+}
+
+export interface LastFlowInfo {
+  available: boolean
+  tracks: number
+  savedAt: number
 }
 
 export interface FlowInfo {
   active: boolean
   seeds: { id?: string; name: string; coverUrl?: string; weight?: number }[]
-  genres: string[]
-  excludeGenres: string[]
   novelty: number
   anchors: FlowAnchor[]
   routes: Record<string, FlowRoute>
   stats: FlowStats
+  anchorYield: Record<string, number>
+  secondHops: number
 }
 
 export interface UndertowApi {
@@ -403,10 +412,6 @@ export interface UndertowApi {
     seeds: { id?: string; name: string; coverUrl?: string; weight?: number }[]
     tracks: Track[]
   }>
-  flowGenres(): Promise<{
-    items: { id: string; name: string; artists: number; weight: number }[]
-    genre?: string
-  }>
   genreForArtist(name: string, yandexId?: string): Promise<{ id: string; name: string }[]>
   lyrics(track: Track): Promise<Lyrics | null>
   lyricsHas(track: Track): Promise<boolean>
@@ -423,7 +428,13 @@ export interface UndertowApi {
   flowMore(): Promise<Track[]>
   flowInfo(): Promise<FlowInfo>
   flowFeedback(action: 'more' | 'less' | 'skipArtist', track: Track): Promise<{ tracks: Track[] }>
+  flowListen(action: 'completed' | 'skipped', track: Track, playedSeconds: number): Promise<void>
+  flowLast(): Promise<LastFlowInfo>
+  flowResume(): Promise<{ tracks: Track[]; info: FlowInfo; queue: Track[]; index: number }>
+  flowQueue(queue: Track[], index: number): Promise<void>
+  flowAnchor(action: 'pin' | 'replace' | 'remove', id: string): Promise<FlowInfo>
   flowNovelty(value: number): Promise<FlowInfo>
+  flowResetTaste(): Promise<FlowInfo>
   flowSeed(action: 'include' | 'exclude', name: string): Promise<FlowInfo>
   flowPlayed(track: Track): Promise<void>
   flowSeeds(): Promise<{ name: string; weight: number }[]>

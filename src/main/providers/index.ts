@@ -21,7 +21,6 @@ import * as recPrefs from '../recPrefs'
 import * as radio from '../radio'
 import * as browse from '../browse'
 import * as flow from '../flow'
-import * as genres from '../genres'
 import * as playlists from '../playlists'
 import * as yandexMatch from '../yandexMatch'
 import * as youtubeImport from '../youtubeImport'
@@ -208,14 +207,7 @@ export async function flowStart(options?: flow.FlowOptions): Promise<{
 }> {
   const result = await flow.start(options)
   // запоминаем только после удачного запуска, чтобы ошибка не сбивала выбор
-  recPrefs.setFlowGenre(options?.genres?.[0])
   return result
-}
-
-/** Жанры библиотеки для чипов «Течения» (тегирование — при первом вызове). */
-export async function flowGenres(): Promise<{ items: genres.GenreInfo[]; genre?: string }> {
-  await genres.ensure().catch(() => undefined)
-  return { items: genres.list(), genre: recPrefs.flowGenre() }
 }
 
 export function flowMore(): Promise<Track[]> {
@@ -243,6 +235,42 @@ export function flowSeed(action: 'include' | 'exclude', name: string): Promise<f
 
 export function flowPlayed(track: Track): void {
   flow.notePlayed(track)
+}
+
+export function flowListen(
+  action: 'completed' | 'skipped',
+  track: Track,
+  playedSeconds = 0
+): void {
+  flow.listen(action, track, playedSeconds)
+}
+
+export function flowLast(): flow.LastFlowInfo {
+  return flow.lastFlow()
+}
+
+export function flowResume(): {
+  tracks: Track[]
+  info: flow.FlowInfo
+  queue: Track[]
+  index: number
+} {
+  return flow.resume()
+}
+
+export function flowQueue(queue: Track[], index: number): void {
+  flow.setQueue(queue, index)
+}
+
+export function flowAnchor(
+  action: 'pin' | 'replace' | 'remove',
+  anchorId: string
+): Promise<flow.FlowInfo> {
+  return flow.anchorAction(action, anchorId)
+}
+
+export function flowResetTaste(): flow.FlowInfo {
+  return flow.resetTaste()
 }
 
 export function flowSeeds(): { name: string; weight: number }[] {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FlowAnchor, FlowInfo, FlowOptions, FlowRoute, FlowStats, Track } from '../types'
+import type { FlowAnchor, FlowInfo, FlowOptions, FlowRoute, FlowStats, LastFlowInfo, Track } from '../types'
 import { fmtTime } from './TrackList'
 import { IconPause, IconPlay, IconPlus, IconRefresh, IconWave } from './Icons'
 import TopoField from './TopoField'
@@ -11,6 +11,7 @@ interface Props {
   active: boolean
   loading: boolean
   onStart: (options?: FlowOptions) => void
+  onResume: () => void
   onPlayFlow: (track: Track, list: Track[]) => void
   onToggle: () => void
   onArtistRadio: (name: string) => void
@@ -22,13 +23,11 @@ interface Props {
 }
 
 interface Prefs {
-  genres: string[]
-  excludeGenres: string[]
+  novelty: number
 }
 
 const DEFAULT_PREFS: Prefs = {
-  genres: [],
-  excludeGenres: []
+  novelty: 40
 }
 
 const TIER_LABEL: Record<string, string> = {
@@ -54,8 +53,7 @@ function loadPrefs(): Prefs {
     if (!raw) return { ...DEFAULT_PREFS }
     const parsed = JSON.parse(raw) as Partial<Prefs>
     return {
-      genres: Array.isArray(parsed.genres) ? parsed.genres.filter(Boolean) : [],
-      excludeGenres: Array.isArray(parsed.excludeGenres) ? parsed.excludeGenres.filter(Boolean) : []
+      novelty: typeof parsed.novelty === 'number' ? Math.max(0, Math.min(100, parsed.novelty)) : 40
     }
   } catch {
     return { ...DEFAULT_PREFS }
@@ -78,6 +76,7 @@ export default function FlowView({
   active,
   loading,
   onStart,
+  onResume,
   onPlayFlow,
   onToggle,
   onArtistRadio,
@@ -87,19 +86,35 @@ export default function FlowView({
   onToast,
   onHover
 }: Props) {
-  const [genreList, setGenreList] = useState<{ id: string; name: string; artists: number }[]>([])
-  const [genresLoading, setGenresLoading] = useState(true)
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs())
-  const [genreMode, setGenreMode] = useState<'include' | 'exclude'>('include')
   const [feedbackBusy, setFeedbackBusy] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [routes, setRoutes] = useState<Record<string, FlowRoute>>({})
   const [stats, setStats] = useState<FlowStats | null>(null)
   const [anchors, setAnchors] = useState<FlowAnchor[]>([])
   const [discoveries, setDiscoveries] = useState<{ name: string; coverUrl?: string; at: number }[]>([])
+  const [lastFlow, setLastFlow] = useState<LastFlowInfo | null>(null)
+  const [anchorBusy, setAnchorBusy] = useState<string | null>(null)
+  const [anchorYield, setAnchorYield] = useState<Record<string, number>>({})
+  const [confirmTaste, setConfirmTaste] = useState(false)
+  const [tasteBusy, setTasteBusy] = useState(false)
 
   const alive = active && playing
   const current = active && index >= 0 ? queue[index] : undefined
+
+  useEffect(() => {
+    if (active) return
+    let alive = true
+    void window.undertow
+      .flowLast()
+      .then((info) => {
+        if (alive) setLastFlow(info)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [active])
 
   useEffect(() => {
     if (!active) return
@@ -122,32 +137,21 @@ export default function FlowView({
     setRoutes(info.routes ?? {})
     setStats(info.stats ?? null)
     setAnchors(info.anchors ?? [])
+    setAnchorYield(info.anchorYield ?? {})
   }
 
   useEffect(() => {
     let aliveFetch = true
     void (async () => {
       try {
-        const [flow, genres] = await Promise.all([
-          window.undertow.flowInfo(),
-          window.undertow.flowGenres()
-        ])
+        const flow = await window.undertow.flowInfo()
         if (!aliveFetch) return
-        setGenreList(genres?.items ?? [])
         setRoutes(flow?.routes ?? {})
         setStats(flow?.stats ?? null)
         setAnchors(flow?.anchors ?? [])
-        if (flow?.active) {
-          setPrefs((prev) => ({
-            ...prev,
-            genres: flow?.genres ?? [],
-            excludeGenres: flow?.excludeGenres ?? []
-          }))
-        }
+        setAnchorYield(flow?.anchorYield ?? {})
       } catch {
         /* без библиотеки — пусто */
-      } finally {
-        if (aliveFetch) setGenresLoading(false)
       }
     })()
     return () => {
@@ -185,35 +189,9 @@ export default function FlowView({
     }
   }, [prefs])
 
-  const selectedGenres = new Set(prefs.genres)
-  const excludedGenres = new Set(prefs.excludeGenres)
-
-
-  const toggleGenre = (id: string) => {
-    setPrefs((prev) => {
-      if (genreMode === 'include') {
-        const on = prev.genres.includes(id)
-        return {
-          ...prev,
-          genres: on ? prev.genres.filter((x) => x !== id) : [...prev.genres, id],
-          excludeGenres: prev.excludeGenres.filter((x) => x !== id)
-        }
-      }
-      const on = prev.excludeGenres.includes(id)
-      return {
-        ...prev,
-        excludeGenres: on ? prev.excludeGenres.filter((x) => x !== id) : [...prev.excludeGenres, id],
-        genres: prev.genres.filter((x) => x !== id)
-      }
-    })
-  }
-
-
-
   const start = () => {
     const options: FlowOptions = {
-      genres: prefs.genres,
-      excludeGenres: prefs.excludeGenres
+      novelty: prefs.novelty
     }
     onStart(options)
   }
@@ -246,10 +224,49 @@ export default function FlowView({
     }
   }
 
+  const anchorAction = async (action: 'pin' | 'replace' | 'remove', id: string) => {
+    if (anchorBusy) return
+    setAnchorBusy(id)
+    try {
+      const info = await window.undertow.flowAnchor(action, id)
+      applyInfo(info)
+      onToast?.(
+        action === 'pin' ? 'Якорь закреплён' : action === 'replace' ? 'Якорь заменён' : 'Якорь убран'
+      )
+    } catch (e) {
+      onToast?.(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setAnchorBusy(null)
+    }
+  }
+
+  const changeNovelty = (value: number) => {
+    const next = Math.max(0, Math.min(100, Math.round(value)))
+    setPrefs((prev) => ({ ...prev, novelty: next }))
+    if (active) {
+      void window.undertow.flowNovelty(next).then(applyInfo).catch(() => undefined)
+    }
+  }
+
+  const resetTaste = async () => {
+    if (!confirmTaste) {
+      setConfirmTaste(true)
+      return
+    }
+    setTasteBusy(true)
+    try {
+      const info = await window.undertow.flowResetTaste()
+      applyInfo(info)
+      setConfirmTaste(false)
+      onToast?.('Вкусы потока сброшены: артисты и пропущенные треки снова доступны')
+    } catch (e) {
+      onToast?.(e instanceof Error ? e.message : String(e), 'error')
+    } finally {
+      setTasteBusy(false)
+    }
+  }
+
   const statsMinutes = stats ? Math.floor(stats.seconds / 60) : 0
-  const genreName = prefs.genres.length
-    ? prefs.genres.map((id) => genreList.find((g) => g.id === id)?.name ?? id).join(', ')
-    : undefined
 
   return (
     <div className={`scroll flow-page${alive ? ' live' : ''}`}>
@@ -314,13 +331,7 @@ export default function FlowView({
             ) : null}
           </div>
           <div className="flow-hero-quick">
-            <span>
-              {prefs.genres.length
-                ? `жанры: ${prefs.genres.length}`
-                : prefs.excludeGenres.length
-                  ? `исключено жанров: ${prefs.excludeGenres.length}`
-                  : 'все жанры'}
-            </span>
+            <span>новизна {prefs.novelty}</span>
             <button
               onClick={() => {
                 setSetupOpen(true)
@@ -352,6 +363,18 @@ export default function FlowView({
                 <b>{stats.newArtists}</b>
                 <i>{plural(stats.newArtists, 'новый артист', 'новых артиста', 'новых артистов')}</i>
               </span>
+              {stats.skipped > 0 ? (
+                <span>
+                  <b>{stats.skipped}</b>
+                  <i>пропущено</i>
+                </span>
+              ) : null}
+              {stats.completed > 0 ? (
+                <span>
+                  <b>{stats.completed}</b>
+                  <i>дослушано</i>
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -360,30 +383,58 @@ export default function FlowView({
       {active && anchors.length ? (
         <section className="flow-anchors fade-up" aria-label="Треки-якоря потока">
           <div className="flow-anchors-head">
-            <b>Двенадцать якорей</b>
+            <b>{anchors.length} {plural(anchors.length, 'якорь', 'якоря', 'якорей')}</b>
             <span>от этих треков строится поток</span>
           </div>
           <div className="flow-anchors-row">
             {anchors.slice(0, 12).map((anchor) => (
-              <button
+              <div
+                className={`flow-anchor${anchor.pinned ? ' pinned' : ''}`}
                 key={`${anchor.track.id}-${anchor.role}`}
-                className="flow-anchor"
-                onClick={() => onArtistRadio(anchor.track.artist)}
-                title={`Радио ${anchor.track.artist}`}
               >
-                <span className="flow-anchor-cover">
-                  {anchor.track.coverUrl ? (
-                    <img src={anchor.track.coverUrl} alt="" loading="lazy" />
-                  ) : (
-                    <i>{anchor.track.artist.slice(0, 1).toUpperCase()}</i>
-                  )}
-                </span>
-                <span className="flow-anchor-text">
-                  <b>{anchor.track.title}</b>
-                  <i>{anchor.track.artist}</i>
-                </span>
-                <span className={`flow-anchor-role role-${anchor.role}`}>{ROLE_LABEL[anchor.role]}</span>
-              </button>
+                <button
+                  className="flow-anchor-main"
+                  onClick={() => onArtistRadio(anchor.track.artist)}
+                  title={`Радио ${anchor.track.artist} · дал ${anchorYield[anchor.track.id] ?? 0} треков`}
+                >
+                  <span className="flow-anchor-cover">
+                    {anchor.track.coverUrl ? (
+                      <img src={anchor.track.coverUrl} alt="" loading="lazy" />
+                    ) : (
+                      <i>{anchor.track.artist.slice(0, 1).toUpperCase()}</i>
+                    )}
+                  </span>
+                  <span className="flow-anchor-text">
+                    <b>{anchor.track.title}</b>
+                    <i>{anchor.track.artist}</i>
+                  </span>
+                  <span className={`flow-anchor-role role-${anchor.role}`}>{ROLE_LABEL[anchor.role]}</span>
+                </button>
+                <div className="flow-anchor-actions">
+                  <button
+                    className={anchor.pinned ? 'on' : ''}
+                    disabled={anchorBusy === anchor.track.id}
+                    onClick={() => void anchorAction('pin', anchor.track.id)}
+                    title={anchor.pinned ? 'Открепить якорь' : 'Закрепить якорь'}
+                  >
+                    {anchor.pinned ? '●' : '○'}
+                  </button>
+                  <button
+                    disabled={anchorBusy === anchor.track.id}
+                    onClick={() => void anchorAction('replace', anchor.track.id)}
+                    title="Заменить якорь"
+                  >
+                    ↻
+                  </button>
+                  <button
+                    disabled={anchorBusy === anchor.track.id}
+                    onClick={() => void anchorAction('remove', anchor.track.id)}
+                    title="Убрать якорь"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         </section>
@@ -400,10 +451,7 @@ export default function FlowView({
             />
             {current.coverUrl ? <img className="flow-now-cover" src={current.coverUrl} alt="" /> : <div className="flow-now-cover" />}
             <div className="flow-now-meta">
-              <span className="flow-now-label">
-                сейчас играет
-                {genreName ? <span className="flow-genre-tag"> · {genreName}</span> : null}
-              </span>
+              <span className="flow-now-label">сейчас играет</span>
               <div className="flow-now-title">{current.title}</div>
               <div className="flow-now-artist">
                 {current.artist}
@@ -433,6 +481,7 @@ export default function FlowView({
                   {route.tier ? (
                     <span className={`flow-tier flow-tier-${route.tier}`}>{TIER_LABEL[route.tier]}</span>
                   ) : null}
+                  {route.hop === 2 ? <span className="flow-route-hop">второй шаг</span> : null}
                 </div>
               ) : null}
             </div>
@@ -543,6 +592,12 @@ export default function FlowView({
                 Оно возьмёт двенадцать треков-якорей из вашей библиотеки и пойдёт
                 по похожим трекам, пополняя очередь сама.
               </p>
+              {lastFlow?.available ? (
+                <button className="play-btn flow-resume" onClick={onResume} disabled={loading}>
+                  <IconPlay width={14} height={14} />
+                  Продолжить прошлое течение · {lastFlow.tracks}
+                </button>
+              ) : null}
             </div>
           </div>
           <div className="flow-idle-steps">
@@ -560,93 +615,53 @@ export default function FlowView({
         <div className="flow-setup-head">
           <div>
             <h2>Настройки потока</h2>
-            <p>Жанры и фильтры — если хочется точнее.</p>
+            <p>Новизна и вкусы потока — если хочется точнее.</p>
           </div>
           <button className="flow-setup-toggle" onClick={() => setSetupOpen((v) => !v)}>
             {setupOpen ? 'свернуть' : 'настроить'}
           </button>
         </div>
 
-        <div className="flow-setup-grid">
-          <div className="flow-setup-block">
-            <div className="flow-setup-title">
-              <b>Жанры</b>
-              <span>
-                {prefs.genres.length
-                  ? `включено: ${prefs.genres.length}`
-                  : prefs.excludeGenres.length
-                    ? `исключено: ${prefs.excludeGenres.length}`
-                    : 'все жанры'}
-              </span>
-            </div>
-
-            <div className="flow-genre-tools">
-              <div className="flow-genre-mode" role="group" aria-label="Режим выбора жанров">
-                <button
-                  className={genreMode === 'include' ? 'on' : ''}
-                  onClick={() => setGenreMode('include')}
-                  aria-pressed={genreMode === 'include'}
-                >
-                  включить
-                </button>
-                <button
-                  className={genreMode === 'exclude' ? 'on' : ''}
-                  onClick={() => setGenreMode('exclude')}
-                  aria-pressed={genreMode === 'exclude'}
-                >
-                  исключить
-                </button>
-              </div>
-            </div>
-            <p className="flow-setup-hint">
-              {genreMode === 'include'
-                ? 'Ничего не выбрано — берём всю библиотеку. Выбранные жанры будут звучать чаще.'
-                : 'Эти жанры не будут попадать в поток.'}
-            </p>
-            {prefs.genres.length || prefs.excludeGenres.length ? (
-              <p className="flow-apply-note">
-                {active
-                  ? 'Применится после кнопки «Пересобрать».'
-                  : 'Применится при следующем запуске.'}
-              </p>
-            ) : null}
-
-            <div className="flow-genres" role="group" aria-label="Жанр течения">
-              {genresLoading && !genreList.length ? (
-                <>
-                  <span className="flow-genre skeleton" />
-                  <span className="flow-genre skeleton" />
-                  <span className="flow-genre skeleton" />
-                </>
-              ) : (
-                <>
-                  <button
-                    className={`flow-genre${!prefs.genres.length && !prefs.excludeGenres.length ? ' on' : ''}`}
-                    onClick={() => setPrefs((prev) => ({ ...prev, genres: [], excludeGenres: [] }))}
-                  >
-                    всё
-                  </button>
-                  {genreList.map((g) => (
-                    <button
-                      key={g.id}
-                      className={`flow-genre${selectedGenres.has(g.id) ? ' on' : ''}${
-                        excludedGenres.has(g.id) ? ' off' : ''
-                      }`}
-                      onClick={() => toggleGenre(g.id)}
-                      title={`${g.artists} артистов в библиотеке`}
-                    >
-                      {g.name}
-                      <i>{g.artists}</i>
-                    </button>
-                  ))}
-                </>
-              )}
-            </div>
-            {genreName ? <span className="flow-selected-genres">сейчас: {genreName}</span> : null}
+        <div className="flow-novelty">
+          <div className="flow-novelty-head">
+            <b>Новизна</b>
+            <span>
+              {prefs.novelty < 35
+                ? 'больше знакомого'
+                : prefs.novelty > 65
+                  ? 'больше нового'
+                  : 'середина'}
+            </span>
           </div>
-
-
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={prefs.novelty}
+            onChange={(e) => changeNovelty(Number(e.target.value))}
+          />
+          <div className="flow-novelty-labels">
+            <span>знакомое</span>
+            <span>новое</span>
+          </div>
         </div>
+
+        <div className="flow-taste-reset">
+          <div>
+            <b>Вкусы потока</b>
+            <span>Веса артистов, исключения и пропущенные треки. Сброс вернёт их в поток.</span>
+          </div>
+          <button
+            className={confirmTaste ? 'confirm' : ''}
+            onClick={() => void resetTaste()}
+            onBlur={() => setConfirmTaste(false)}
+            disabled={tasteBusy}
+          >
+            {tasteBusy ? 'Сбрасываю…' : confirmTaste ? 'Точно сбросить?' : 'Сбросить вкусы'}
+          </button>
+        </div>
+
       </section>
 
     </div>

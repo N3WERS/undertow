@@ -126,15 +126,28 @@ export function registerIpc(): void {
   ipcMain.handle('queue:clear', async () => queueStore.clear())
 
   ipcMain.handle('flow:start', async (_e, options?: FlowOptions) => providers.flowStart(options))
-  ipcMain.handle('flow:genres', async () => providers.flowGenres())
   ipcMain.handle('flow:feedback', async (_e, action: FlowFeedback, track: Track) =>
     providers.flowFeedback(action, track)
   )
   ipcMain.handle('flow:novelty', async (_e, value: number) => providers.flowNovelty(Number(value)))
+  ipcMain.handle('flow:reset-taste', async () => providers.flowResetTaste())
   ipcMain.handle('flow:seed', async (_e, action: 'include' | 'exclude', name: string) =>
     providers.flowSeed(action, String(name ?? ''))
   )
   ipcMain.handle('flow:played', async (_e, track: Track) => providers.flowPlayed(track))
+  ipcMain.handle(
+    'flow:listen',
+    async (_e, action: 'completed' | 'skipped', track: Track, playedSeconds: number) =>
+      providers.flowListen(action, track, Number(playedSeconds) || 0)
+  )
+  ipcMain.handle('flow:last', async () => providers.flowLast())
+  ipcMain.handle('flow:resume', async () => providers.flowResume())
+  ipcMain.handle('flow:queue', async (_e, queue: Track[], index: number) =>
+    providers.flowQueue(queue, Number(index) || 0)
+  )
+  ipcMain.handle('flow:anchor', async (_e, action: 'pin' | 'replace' | 'remove', id: string) =>
+    providers.flowAnchor(action, String(id ?? ''))
+  )
   ipcMain.handle('genres:artist', async (_e, name: string, yandexId?: string) =>
     genres.forArtist(String(name ?? ''), yandexId ? String(yandexId) : undefined)
   )

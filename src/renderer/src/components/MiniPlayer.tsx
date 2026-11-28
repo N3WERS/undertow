@@ -21,7 +21,7 @@ import { fmtTime } from './TrackList'
 import { useProgress } from '../audio/progress'
 import { removeOffline, saveTrack, useOffline } from '../offline'
 import type { RepeatMode } from '../audio/engine'
-import type { Track } from '../types'
+import type { FlowRoute, Track } from '../types'
 
 interface Props {
   track: Track | null
@@ -35,6 +35,8 @@ interface Props {
   queueIndex: number
   shuffled: boolean
   repeat: RepeatMode
+  flowActive: boolean
+  flowRoute: FlowRoute | null
   liked: boolean
   onLike: () => void
   onToggle: () => void
@@ -63,6 +65,8 @@ export default function MiniPlayer({
   queueIndex,
   shuffled,
   repeat,
+  flowActive,
+  flowRoute,
   liked,
   onLike,
   onToggle,
@@ -88,6 +92,27 @@ export default function MiniPlayer({
   const panelStart = Math.max(0, queueIndex - 1)
   const panelQueue = queue.slice(panelStart, panelStart + 40)
   const queueTail = Math.max(0, queue.length - panelStart - panelQueue.length)
+
+  const flowReason = flowActive
+    ? flowRoute?.library
+      ? 'из вашей библиотеки'
+      : flowRoute?.anchor
+        ? `похоже на «${flowRoute.anchor}»`
+        : flowRoute?.seed
+          ? `от ${flowRoute.seed}`
+          : 'продолжение потока'
+    : ''
+  const flowTier = flowActive
+    ? flowRoute?.hop === 2
+      ? 'второй шаг'
+      : flowRoute?.tier === 'hit'
+        ? 'хит'
+        : flowRoute?.tier === 'recent'
+          ? 'новинка'
+          : flowRoute?.tier === 'deep'
+            ? 'глубина'
+            : ''
+    : ''
 
   const setVolume = (clientX: number, el: HTMLElement): void => {
     const rect = el.getBoundingClientRect()
@@ -170,6 +195,12 @@ export default function MiniPlayer({
 
             <div className="mini-info">
               <div className="mini-meta">
+                {flowActive ? (
+                  <span className="mini-flow-badge" title="Трек играет из Течения">
+                    <IconWave width={9} height={9} />
+                    Течение
+                  </span>
+                ) : null}
                 {source ? <span className="mini-source">{sourceLabel(source)}</span> : null}
                 {quality ? <span className="mini-quality">{quality}</span> : null}
                 <span className="mini-times">
@@ -215,6 +246,13 @@ export default function MiniPlayer({
               <div className="mini-artist" title={track?.artist}>
                 {track?.artist ?? 'Выбери трек в основном окне'}
               </div>
+              {flowActive ? (
+                <div className="mini-flow-why" title={flowReason}>
+                  <span className="mini-flow-why-label">почему</span>
+                  <span className="mini-flow-why-text">{flowReason}</span>
+                  {flowTier ? <span className="mini-flow-tier">{flowTier}</span> : null}
+                </div>
+              ) : null}
             </div>
           </div>
 
